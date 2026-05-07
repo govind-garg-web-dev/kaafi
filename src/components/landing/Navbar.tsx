@@ -58,16 +58,21 @@ export default function Navbar() {
 
         {/* CTA */}
         <div className="hidden md:flex items-center gap-3">
+          <Link href="/login">
+            <button className="text-sm text-[#94a3b8] hover:text-white transition-colors font-medium px-3 py-2">
+              Sign in
+            </button>
+          </Link>
           <Link href="/demo">
             <button className="btn-outline px-4 py-2 text-sm">
               Try demo
             </button>
           </Link>
-          <a href="#waitlist">
+          <Link href="/signup">
             <button className="btn-primary px-5 py-2 text-sm">
-              Get early access
+              Get started free
             </button>
-          </a>
+          </Link>
         </div>
 
         {/* Mobile hamburger */}
@@ -119,16 +124,21 @@ export default function Navbar() {
                 </a>
               ))}
               <div className="flex flex-col gap-2 pt-2 border-t border-white/5">
+                <Link href="/login">
+                  <button className="btn-outline w-full px-4 py-2.5 text-sm">
+                    Sign in
+                  </button>
+                </Link>
                 <Link href="/demo">
                   <button className="btn-outline w-full px-4 py-2.5 text-sm">
                     Try demo
                   </button>
                 </Link>
-                <a href="#waitlist">
+                <Link href="/signup">
                   <button className="btn-primary w-full px-4 py-2.5 text-sm">
-                    Get early access
+                    Get started free
                   </button>
-                </a>
+                </Link>
               </div>
             </div>
           </motion.div>
