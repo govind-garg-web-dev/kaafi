@@ -1,11 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
-import Razorpay from "razorpay";
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const Razorpay = require("razorpay");
 import { createClient } from "@/lib/supabase/server";
 
-const razorpay = new Razorpay({
-  key_id: process.env.RAZORPAY_KEY_ID!,
-  key_secret: process.env.RAZORPAY_KEY_SECRET!,
-});
+function getRazorpay() {
+  const keyId = process.env.RAZORPAY_KEY_ID;
+  const keySecret = process.env.RAZORPAY_KEY_SECRET;
+  if (!keyId || !keySecret) throw new Error("Razorpay keys not configured");
+  return new Razorpay({ key_id: keyId, key_secret: keySecret });
+}
 
 // Prices in paise (1 INR = 100 paise)
 const PLAN_PRICES: Record<string, { amount: number; name: string }> = {
@@ -24,7 +27,7 @@ export async function POST(req: NextRequest) {
     const planConfig = PLAN_PRICES[plan];
     if (!planConfig) return NextResponse.json({ error: "Invalid plan." }, { status: 400 });
 
-    const order = await razorpay.orders.create({
+    const order = await getRazorpay().orders.create({
       amount: planConfig.amount,
       currency: "INR",
       receipt: `kaafi_${user.id}_${Date.now()}`,
