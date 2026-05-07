@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { motion } from "framer-motion";
-import { LayoutDashboard, Plus, LogOut, Coins, ChevronDown } from "lucide-react";
+import { LayoutDashboard, Plus, LogOut, Coins, CreditCard } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import type { Profile } from "@/lib/supabase/types";
 import type { User } from "@supabase/supabase-js";
@@ -48,6 +48,7 @@ export default function AppShell({
   const NAV = [
     { label: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
     { label: "New project", href: "/new", icon: Plus },
+    { label: "Billing", href: "/billing", icon: CreditCard },
   ];
 
   return (
@@ -117,7 +118,7 @@ export default function AppShell({
             {plan === "hobby" && (
               <Link href="/billing">
                 <button className="btn-primary w-full py-2 text-xs mt-3">
-                  Upgrade to Builder →
+                  Upgrade — ₹499/mo →
                 </button>
               </Link>
             )}

@@ -3,29 +3,31 @@
 import { motion, useInView } from "framer-motion";
 import { useRef } from "react";
 import { Check } from "lucide-react";
+import Link from "next/link";
 
 const PLANS = [
   {
     name: "Hobby",
-    price: "Free",
+    price: "₹0",
     period: "",
-    inr: "₹0",
+    annual: "",
     description: "Explore Kaafi risk-free",
     features: [
       "5 credits/day (30/month)",
       "1 active project",
-      "Web preview",
+      "App preview",
       "Kaafi watermark",
     ],
     cta: "Start free",
+    ctaHref: "/signup",
     ctaStyle: "outline",
     highlight: false,
   },
   {
     name: "Builder",
-    price: "$19",
+    price: "₹499",
     period: "/mo",
-    inr: "₹499/mo",
+    annual: "₹399/mo on annual plan",
     description: "For solo founders shipping real apps",
     features: [
       "120 credits/month",
@@ -35,15 +37,16 @@ const PLANS = [
       "Credit rollover",
     ],
     cta: "Start building",
+    ctaHref: "/signup",
     ctaStyle: "primary",
     highlight: true,
     badge: "Most popular",
   },
   {
     name: "Studio",
-    price: "$49",
+    price: "₹1,499",
     period: "/mo",
-    inr: "₹1,499/mo",
+    annual: "₹1,199/mo on annual plan",
     description: "Ship to the App Store without Xcode",
     features: [
       "350 credits/month",
@@ -53,6 +56,7 @@ const PLANS = [
       "No watermark",
     ],
     cta: "Go Studio",
+    ctaHref: "/signup",
     ctaStyle: "outline",
     highlight: false,
   },
@@ -64,7 +68,6 @@ export default function PricingPreview() {
 
   return (
     <section id="pricing" className="relative py-28 overflow-hidden" ref={ref}>
-      {/* Background */}
       <div className="absolute inset-0 bg-[radial-gradient(ellipse_60%_50%_at_50%_80%,rgba(124,92,252,0.08),transparent)]" />
 
       <div className="max-w-7xl mx-auto px-6">
@@ -99,8 +102,8 @@ export default function PricingPreview() {
             className="text-[#64748b] text-lg max-w-lg mx-auto"
             style={{ fontFamily: "var(--font-inter)" }}
           >
-            See the cost before you click send. No surprise bills.{" "}
-            <span className="text-white">India pricing available in INR.</span>
+            See the cost before you click send. Pay in INR via{" "}
+            <span className="text-white">UPI, cards, or NetBanking.</span>
           </p>
         </motion.div>
 
@@ -109,7 +112,7 @@ export default function PricingPreview() {
           initial={{ opacity: 0, y: 16 }}
           animate={inView ? { opacity: 1, y: 0 } : {}}
           transition={{ duration: 0.5, delay: 0.1 }}
-          className="flex flex-wrap justify-center gap-4 mb-12"
+          className="flex flex-wrap justify-center gap-3 mb-12"
         >
           {[
             { label: "1 generation", credits: "3 credits" },
@@ -118,17 +121,11 @@ export default function PricingPreview() {
             { label: "Visual edits", credits: "Free ∞" },
             { label: "Auto-retry", credits: "Free" },
           ].map((item) => (
-            <div
-              key={item.label}
-              className="glass rounded-xl px-4 py-2 flex items-center gap-2"
-            >
+            <div key={item.label} className="glass rounded-xl px-4 py-2 flex items-center gap-2">
               <span className="text-[#64748b] text-xs" style={{ fontFamily: "var(--font-inter)" }}>
                 {item.label}
               </span>
-              <span
-                className="text-white text-xs font-semibold"
-                style={{ fontFamily: "var(--font-inter)" }}
-              >
+              <span className="text-white text-xs font-semibold" style={{ fontFamily: "var(--font-inter)" }}>
                 = {item.credits}
               </span>
             </div>
@@ -148,7 +145,6 @@ export default function PricingPreview() {
               {plan.highlight && (
                 <div className="absolute -inset-px rounded-2xl bg-gradient-to-b from-violet-500/50 to-violet-500/10 pointer-events-none" />
               )}
-
               {plan.badge && (
                 <div className="absolute -top-3 left-1/2 -translate-x-1/2 px-3 py-1 rounded-full bg-gradient-to-r from-violet-600 to-violet-500 text-white text-xs font-semibold shadow-lg shadow-violet-500/30">
                   {plan.badge}
@@ -156,31 +152,18 @@ export default function PricingPreview() {
               )}
 
               <div
-                className={`glass rounded-2xl p-6 h-full flex flex-col relative ${
-                  plan.highlight ? "border-violet-500/30" : ""
-                }`}
-                style={
-                  plan.highlight
-                    ? {
-                        background: "rgba(124,92,252,0.08)",
-                        boxShadow:
-                          "0 0 0 1px rgba(124,92,252,0.25), 0 20px 60px rgba(124,92,252,0.15)",
-                      }
-                    : {}
-                }
+                className={`glass rounded-2xl p-6 h-full flex flex-col relative`}
+                style={plan.highlight ? {
+                  background: "rgba(124,92,252,0.08)",
+                  boxShadow: "0 0 0 1px rgba(124,92,252,0.25), 0 20px 60px rgba(124,92,252,0.15)",
+                } : {}}
               >
-                {/* Plan name */}
+                {/* Name + description */}
                 <div className="mb-4">
-                  <h3
-                    className="text-lg font-bold text-white mb-1"
-                    style={{ fontFamily: "var(--font-playfair)" }}
-                  >
+                  <h3 className="text-lg font-bold text-white mb-1" style={{ fontFamily: "var(--font-playfair)" }}>
                     {plan.name}
                   </h3>
-                  <p
-                    className="text-[#64748b] text-xs"
-                    style={{ fontFamily: "var(--font-inter)" }}
-                  >
+                  <p className="text-[#64748b] text-xs" style={{ fontFamily: "var(--font-inter)" }}>
                     {plan.description}
                   </p>
                 </div>
@@ -188,21 +171,20 @@ export default function PricingPreview() {
                 {/* Price */}
                 <div className="mb-6">
                   <div className="flex items-baseline gap-1">
-                    <span
-                      className="text-4xl font-bold text-white"
-                      style={{ fontFamily: "var(--font-playfair)" }}
-                    >
+                    <span className="text-4xl font-bold text-white" style={{ fontFamily: "var(--font-playfair)" }}>
                       {plan.price}
                     </span>
                     {plan.period && (
                       <span className="text-[#64748b] text-sm" style={{ fontFamily: "var(--font-inter)" }}>
-                        {plan.period} annual
+                        {plan.period}
                       </span>
                     )}
                   </div>
-                  <p className="text-xs text-violet-400 mt-1" style={{ fontFamily: "var(--font-inter)" }}>
-                    {plan.inr}
-                  </p>
+                  {plan.annual && (
+                    <p className="text-xs text-violet-400 mt-1" style={{ fontFamily: "var(--font-inter)" }}>
+                      {plan.annual}
+                    </p>
+                  )}
                 </div>
 
                 {/* Features */}
@@ -212,10 +194,7 @@ export default function PricingPreview() {
                       <div className="w-4 h-4 rounded-full bg-violet-500/20 flex items-center justify-center flex-shrink-0 mt-0.5">
                         <Check size={9} className="text-violet-400" />
                       </div>
-                      <span
-                        className="text-sm text-[#94a3b8]"
-                        style={{ fontFamily: "var(--font-inter)" }}
-                      >
+                      <span className="text-sm text-[#94a3b8]" style={{ fontFamily: "var(--font-inter)" }}>
                         {feat}
                       </span>
                     </li>
@@ -223,15 +202,11 @@ export default function PricingPreview() {
                 </ul>
 
                 {/* CTA */}
-                <button
-                  className={
-                    plan.ctaStyle === "primary"
-                      ? "btn-primary w-full py-3 text-sm"
-                      : "btn-outline w-full py-3 text-sm"
-                  }
-                >
-                  {plan.cta}
-                </button>
+                <Link href={plan.ctaHref}>
+                  <button className={plan.ctaStyle === "primary" ? "btn-primary w-full py-3 text-sm" : "btn-outline w-full py-3 text-sm"}>
+                    {plan.cta}
+                  </button>
+                </Link>
               </div>
             </motion.div>
           ))}
@@ -245,7 +220,7 @@ export default function PricingPreview() {
           className="text-center text-[#4a5568] text-sm mt-8"
           style={{ fontFamily: "var(--font-inter)" }}
         >
-          Need more credits? Top up anytime: $10 = 50 credits ($0.20/credit — cheaper than competitors)
+          Need more credits? Top up anytime: ₹199 = 50 credits · UPI accepted
         </motion.p>
       </div>
     </section>
