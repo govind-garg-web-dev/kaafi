@@ -102,8 +102,19 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Missing idea or answers." }, { status: 400 });
     }
 
+    // Resolve answer IDs → label text so the keyword selector works correctly
+    type Q = { id: string; options: { id: string; label: string }[] };
+    const resolvedAnswers: Record<string, string> = {};
+    if (Array.isArray(questions)) {
+      for (const q of questions as Q[]) {
+        const answerId = answers[q.id];
+        const opt = q.options.find((o) => o.id === answerId);
+        if (opt) resolvedAnswers[q.id] = opt.label;
+      }
+    }
+
     // Pick scaffold early — needed for project record
-    const scaffoldType = selectTemplate(idea, answers);
+    const scaffoldType = selectTemplate(idea, resolvedAnswers);
     const scaffold = SCAFFOLDS[scaffoldType];
 
     // Deduct credits
