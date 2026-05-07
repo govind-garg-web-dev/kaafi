@@ -85,10 +85,8 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json(parsed);
   } catch (err) {
-    console.error("[/api/ai/mcq]", err);
-    return NextResponse.json(
-      { error: "Failed to generate questions. Please try again." },
-      { status: 500 }
-    );
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error("[/api/ai/mcq]", msg);
+    return NextResponse.json({ error: msg }, { status: 500 });
   }
 }

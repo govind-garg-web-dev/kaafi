@@ -90,8 +90,8 @@ export default function NewProjectPage() {
       if (!res.ok) throw new Error(data.error);
       setQuestions(data.questions);
       setStage("wizard");
-    } catch {
-      setError("Failed to generate questions. Try again?");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to generate questions. Try again?");
       setStage("idea");
     }
   };
