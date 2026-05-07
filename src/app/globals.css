@@ -35,6 +35,10 @@ body {
   overflow-x: hidden;
 }
 
+button, a, [role="button"] {
+  cursor: pointer;
+}
+
 /* Custom scrollbar */
 ::-webkit-scrollbar {
   width: 6px;
