@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import Anthropic from "@anthropic-ai/sdk";
 import { createClient } from "@/lib/supabase/server";
-import { AUTH_FEED_SCAFFOLD } from "@/lib/scaffolds/auth-feed";
+import { SCAFFOLDS, selectTemplate } from "@/lib/scaffolds/selector";
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 const CREDIT_COST = 3;
@@ -102,6 +102,10 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Missing idea or answers." }, { status: 400 });
     }
 
+    // Pick scaffold early — needed for project record
+    const scaffoldType = selectTemplate(idea, answers);
+    const scaffold = SCAFFOLDS[scaffoldType];
+
     // Deduct credits
     await supabase
       .from("profiles")
@@ -124,15 +128,15 @@ export async function POST(req: NextRequest) {
         prompt: idea,
         mcq_answers: answers,
         status: "generating",
-        scaffold_type: "auth-feed",
+        scaffold_type: scaffoldType,
       })
       .select()
       .single();
 
     if (projectError || !project) throw new Error("Failed to create project");
 
-    // Extract slots from scaffold
-    const slots = extractSlots(AUTH_FEED_SCAFFOLD);
+    // Extract slots from the chosen scaffold
+    const slots = extractSlots(scaffold);
 
     // Ask Sonnet for slot values only (small output — won't hit token limit)
     const message = await client.messages.create({
@@ -150,7 +154,7 @@ export async function POST(req: NextRequest) {
     const slotValues: Record<string, string> = JSON.parse(cleaned);
 
     // Apply slots to every scaffold file programmatically
-    const patches = Object.entries(AUTH_FEED_SCAFFOLD).map(([path, template]) => ({
+    const patches = Object.entries(scaffold).map(([path, template]) => ({
       path,
       content: applySlots(template, slotValues),
     }));
