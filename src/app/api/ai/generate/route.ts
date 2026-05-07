@@ -148,21 +148,61 @@ export async function POST(req: NextRequest) {
 
     // Extract slots from the chosen scaffold
     const slots = extractSlots(scaffold);
+    const prompt = buildSlotPrompt(idea, answers, questions ?? [], slots);
 
-    // Ask Sonnet for slot values only (small output — won't hit token limit)
-    const message = await client.messages.create({
-      model: "claude-sonnet-4-6",
-      max_tokens: 2048,
-      system: SYSTEM_PROMPT,
-      messages: [{
-        role: "user",
-        content: buildSlotPrompt(idea, answers, questions ?? [], slots),
-      }],
-    });
+    // Helper: call Sonnet and parse slot values
+    async function attemptGeneration(isRetry: boolean): Promise<Record<string, string>> {
+      const systemMsg = isRetry
+        ? `${SYSTEM_PROMPT}\n\nIMPORTANT: Your previous attempt returned invalid JSON. This is a retry — return ONLY a valid, complete JSON object. Double-check all strings are properly closed.`
+        : SYSTEM_PROMPT;
 
-    const raw = message.content[0].type === "text" ? message.content[0].text : "{}";
-    const cleaned = raw.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "").trim();
-    const slotValues: Record<string, string> = JSON.parse(cleaned);
+      const message = await client.messages.create({
+        model: "claude-sonnet-4-6",
+        max_tokens: 2048,
+        system: systemMsg,
+        messages: [{ role: "user", content: prompt }],
+      });
+
+      const raw = message.content[0].type === "text" ? message.content[0].text : "{}";
+      const cleaned = raw.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "").trim();
+      return JSON.parse(cleaned); // throws on invalid JSON
+    }
+
+    // Auto-retry: attempt 1, then attempt 2 — both on our cost
+    let slotValues: Record<string, string>;
+    try {
+      slotValues = await attemptGeneration(false);
+    } catch (firstErr) {
+      console.warn("[/api/ai/generate] Attempt 1 failed, retrying…", firstErr);
+      try {
+        slotValues = await attemptGeneration(true);
+      } catch (secondErr) {
+        // Both attempts failed — refund credits and mark project as error
+        console.error("[/api/ai/generate] Both attempts failed", secondErr);
+
+        await supabase
+          .from("profiles")
+          .update({ credits_balance: profile.credits_balance }) // restore original
+          .eq("id", user.id);
+
+        await supabase.from("credit_transactions").insert({
+          user_id: user.id,
+          delta: CREDIT_COST,
+          reason: "Generation failed — credits refunded",
+          project_id: project.id,
+        });
+
+        await supabase
+          .from("projects")
+          .update({ status: "error" })
+          .eq("id", project.id);
+
+        return NextResponse.json(
+          { error: "Generation failed after 2 attempts. Your credits have been refunded." },
+          { status: 500 }
+        );
+      }
+    }
 
     // Apply slots to every scaffold file programmatically
     const patches = Object.entries(scaffold).map(([path, template]) => ({
