@@ -4,26 +4,33 @@ import { createClient } from "@/lib/supabase/server";
 import { AUTH_FEED_SCAFFOLD } from "@/lib/scaffolds/auth-feed";
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+const CREDIT_COST = 3;
 
-const SYSTEM_PROMPT = `You are Kaafi's code generator. Your job is to fill in a React Native + Expo scaffold template with content specific to the user's app idea and their answers.
+// Extract every unique KAAFI_SLOT_* name from all scaffold files
+function extractSlots(scaffold: Record<string, string>): string[] {
+  const all = Object.values(scaffold).join("\n");
+  const matches = all.match(/KAAFI_SLOT_[A-Z0-9_]+/g) ?? [];
+  return [...new Set(matches)];
+}
 
-Rules:
-- Replace EVERY KAAFI_SLOT marker with real, meaningful content specific to the app.
-- Keep all React Native / Expo code valid and complete.
-- Use NativeWind (Tailwind) classes for all styling.
-- Keep the file structure exactly as provided — do NOT add or remove files.
-- Return ONLY a JSON array of file patches. No explanation. No markdown.
+// Replace all slot occurrences in a string
+function applySlots(template: string, slots: Record<string, string>): string {
+  let result = template;
+  for (const [key, value] of Object.entries(slots)) {
+    result = result.replaceAll(key, value);
+  }
+  return result;
+}
 
-Output format:
-[
-  { "path": "app/_layout.tsx", "content": "... full file content ..." },
-  { "path": "data/seed.ts", "content": "... full file content ..." }
-]`;
+const SYSTEM_PROMPT = `You are Kaafi's app content generator. Given an app idea and user preferences, return a JSON object mapping slot names to values that will be injected into a React Native app template.
 
-function buildUserPrompt(
+Return ONLY valid JSON. No markdown. No explanation.`;
+
+function buildSlotPrompt(
   idea: string,
   answers: Record<string, string>,
-  questions: { id: string; question: string; options: { id: string; label: string }[] }[]
+  questions: { id: string; question: string; options: { id: string; label: string }[] }[],
+  slots: string[]
 ): string {
   const answerLines = questions
     .map((q) => {
@@ -32,34 +39,54 @@ function buildUserPrompt(
     })
     .join("\n");
 
-  const scaffoldFiles = Object.entries(AUTH_FEED_SCAFFOLD)
-    .map(([path, content]) => `### ${path}\n${content}`)
-    .join("\n\n---\n\n");
-
   return `App idea: "${idea}"
 
-User's answers:
+User's preferences:
 ${answerLines}
 
-Here is the scaffold template to fill in. Replace ALL KAAFI_SLOT markers:
+Fill in EVERY slot below with a specific, realistic value for this app. Return a flat JSON object.
 
-${scaffoldFiles}
+Slots to fill:
+${slots.join("\n")}
 
-Return a JSON array of file patches replacing every KAAFI_SLOT with content specific to this app idea.`;
+Rules:
+- KAAFI_SLOT_APP_NAME: short, catchy name (2-3 words max)
+- KAAFI_SLOT_APP_SLUG: lowercase-hyphenated version of app name
+- KAAFI_SLOT_PRIMARY_COLOR: a hex color matching the vibe (e.g. "#7C3AED")
+- KAAFI_SLOT_ACCENT_COLOR: a complementary hex color
+- KAAFI_SLOT_APP_ICON: a valid Ionicons icon name (e.g. "paw-outline", "restaurant-outline")
+- KAAFI_SLOT_AUTH_METHOD: how users sign in (1 sentence)
+- KAAFI_SLOT_VIBE: the aesthetic description
+- KAAFI_SLOT_LOGIN_TAGLINE: 5-8 word welcome phrase
+- KAAFI_SLOT_SIGNUP_TAGLINE: 5-8 word signup encouragement
+- KAAFI_SLOT_GREETING: short greeting like "Good morning" or "Hey there"
+- KAAFI_SLOT_HEADER_TITLE: the home screen header title (4 words max)
+- KAAFI_SLOT_SEARCH_PLACEHOLDER: search bar placeholder text
+- KAAFI_SLOT_FEED_TITLE: section title for the main feed
+- KAAFI_SLOT_FEED_ITEM_TYPE: what each item in the feed represents
+- KAAFI_SLOT_CTA_LABEL: action button label (1-2 words, e.g. "Book", "Order", "View")
+- KAAFI_SLOT_TAB1_LABEL: first tab label (Home/Feed/Browse)
+- KAAFI_SLOT_TAB1_ICON: Ionicons icon for tab 1 (e.g. "home-outline")
+- KAAFI_SLOT_TAB2_LABEL: second tab label (Explore/Discover/Search)
+- KAAFI_SLOT_TAB2_ICON: Ionicons icon for tab 2 (e.g. "search-outline")
+- KAAFI_SLOT_EXPLORE_SUBTITLE: subtitle for explore/search screen
+- KAAFI_SLOT_EXPLORE_EMPTY_STATE: friendly empty state message
+- KAAFI_SLOT_CAT1 through CAT4: 4 category filter chip labels
+- KAAFI_SLOT_PROFILE_NAME: placeholder profile name
+- KAAFI_SLOT_PROFILE_META: profile subtitle (e.g. "Member since 2024")
+- KAAFI_SLOT_MENU1 + MENU1_ICON, MENU2 + MENU2_ICON, MENU3 + MENU3_ICON: 3 profile menu items with Ionicons names
+- KAAFI_SLOT_ITEM1 through ITEM5 (_TITLE, _SUBTITLE, _EMOJI, _META): 5 realistic sample feed items
+- KAAFI_SLOT_APP_DESCRIPTION: one-sentence app description
+
+Return ONLY the JSON object.`;
 }
-
-const CREDIT_COST = 3;
 
 export async function POST(req: NextRequest) {
   try {
     const supabase = await createClient();
     const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-    if (!user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    // Check + deduct credits
     const { data: profile } = await supabase
       .from("profiles")
       .select("credits_balance, plan")
@@ -67,29 +94,27 @@ export async function POST(req: NextRequest) {
       .single();
 
     if (!profile || profile.credits_balance < CREDIT_COST) {
-      return NextResponse.json({ error: "Insufficient credits. Please top up." }, { status: 402 });
+      return NextResponse.json({ error: "Not enough credits. Please top up." }, { status: 402 });
     }
 
     const { idea, answers, questions } = await req.json();
-
     if (!idea || !answers) {
       return NextResponse.json({ error: "Missing idea or answers." }, { status: 400 });
     }
 
-    // Deduct credits first
+    // Deduct credits
     await supabase
       .from("profiles")
       .update({ credits_balance: profile.credits_balance - CREDIT_COST })
       .eq("id", user.id);
 
-    // Log transaction
     await supabase.from("credit_transactions").insert({
       user_id: user.id,
       delta: -CREDIT_COST,
       reason: "App generation",
     });
 
-    // Create project record
+    // Create project
     const projectName = idea.length > 50 ? idea.slice(0, 50) + "…" : idea;
     const { data: project, error: projectError } = await supabase
       .from("projects")
@@ -104,37 +129,42 @@ export async function POST(req: NextRequest) {
       .select()
       .single();
 
-    if (projectError || !project) {
-      throw new Error("Failed to create project");
-    }
+    if (projectError || !project) throw new Error("Failed to create project");
 
-    // Call Sonnet 4.6 to fill the scaffold
+    // Extract slots from scaffold
+    const slots = extractSlots(AUTH_FEED_SCAFFOLD);
+
+    // Ask Sonnet for slot values only (small output — won't hit token limit)
     const message = await client.messages.create({
       model: "claude-sonnet-4-6",
-      max_tokens: 8192,
+      max_tokens: 2048,
       system: SYSTEM_PROMPT,
       messages: [{
         role: "user",
-        content: buildUserPrompt(idea, answers, questions ?? []),
+        content: buildSlotPrompt(idea, answers, questions ?? [], slots),
       }],
     });
 
-    const raw = message.content[0].type === "text" ? message.content[0].text : "[]";
+    const raw = message.content[0].type === "text" ? message.content[0].text : "{}";
     const cleaned = raw.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "").trim();
-    const patches: { path: string; content: string }[] = JSON.parse(cleaned);
+    const slotValues: Record<string, string> = JSON.parse(cleaned);
 
-    // Save files to DB
-    if (patches.length > 0) {
-      await supabase.from("project_files").insert(
-        patches.map((p) => ({
-          project_id: project.id,
-          path: p.path,
-          content: p.content,
-        }))
-      );
-    }
+    // Apply slots to every scaffold file programmatically
+    const patches = Object.entries(AUTH_FEED_SCAFFOLD).map(([path, template]) => ({
+      path,
+      content: applySlots(template, slotValues),
+    }));
 
-    // Mark project as ready
+    // Save files
+    await supabase.from("project_files").insert(
+      patches.map((p) => ({
+        project_id: project.id,
+        path: p.path,
+        content: p.content,
+      }))
+    );
+
+    // Mark ready
     await supabase
       .from("projects")
       .update({ status: "ready" })
@@ -142,10 +172,8 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ projectId: project.id });
   } catch (err) {
-    console.error("[/api/ai/generate]", err);
-    return NextResponse.json(
-      { error: err instanceof Error ? err.message : "Generation failed." },
-      { status: 500 }
-    );
+    const msg = err instanceof Error ? err.message : "Generation failed.";
+    console.error("[/api/ai/generate]", msg);
+    return NextResponse.json({ error: msg }, { status: 500 });
   }
 }
