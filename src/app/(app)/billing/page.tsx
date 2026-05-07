@@ -112,8 +112,9 @@ export default function BillingPage() {
 
       rzp.open();
     } catch (err) {
-      console.error(err);
-      alert("Payment could not be initiated. Please try again.");
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error("[billing]", msg);
+      alert(`Error: ${msg}`);
     } finally {
       setLoading(null);
     }
