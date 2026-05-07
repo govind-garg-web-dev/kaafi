@@ -20,23 +20,29 @@ export function selectTemplate(idea: string, answers: Record<string, string>): S
 
   const signals: Record<ScaffoldType, string[]> = {
     "auth-map": [
-      "map", "location", "nearby", "gps", "delivery", "track", "driver",
-      "gig", "rider", "uber", "pickup", "drop", "navigate"
+      "map", "location", "nearby", "gps", "driver", "rider",
+      "uber", "pickup", "drop", "navigate", "live location",
+      "real-time location", "find near", "walkers near", "nearest"
     ],
     "auth-booking": [
       "book", "booking", "appointment", "schedule", "salon", "doctor",
-      "tutor", "clinic", "slot", "calendar", "reservation", "service"
+      "tutor", "clinic", "slot", "calendar", "reservation", "consultation",
+      "stylist", "barber", "dentist", "therapist"
     ],
     "auth-ecommerce": [
       "shop", "store", "buy", "sell", "product", "cart", "order",
-      "marketplace", "ecommerce", "price", "payment", "catalog", "kirana",
-      "inventory", "stock", "retail"
+      "marketplace", "ecommerce", "price", "catalog", "kirana",
+      "inventory", "stock", "retail", "expense", "finance", "money",
+      "budget", "spend", "purchase", "spending", "tracker"
     ],
     "auth-chat": [
       "chat", "message", "messaging", "community", "group", "forum",
-      "talk", "conversation", "support", "inbox", "discussion"
+      "talk", "conversation", "support", "inbox", "discussion", "social"
     ],
-    "auth-feed": [],
+    "auth-feed": [
+      "delivery", "tiffin", "meal", "food", "subscription", "feed",
+      "news", "blog", "content", "post", "list", "track", "daily"
+    ],
   };
 
   const scores: Record<ScaffoldType, number> = {
