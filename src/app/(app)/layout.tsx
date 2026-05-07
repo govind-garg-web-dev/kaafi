@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import AppShell from "@/components/app/AppShell";
+import { ToastProvider } from "@/components/ui/Toast";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const supabase = await createClient();
@@ -15,8 +16,10 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     .single();
 
   return (
-    <AppShell profile={profile} user={user}>
-      {children}
-    </AppShell>
+    <ToastProvider>
+      <AppShell profile={profile} user={user}>
+        {children}
+      </AppShell>
+    </ToastProvider>
   );
 }

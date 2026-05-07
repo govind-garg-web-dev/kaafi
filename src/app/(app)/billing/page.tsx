@@ -4,6 +4,7 @@ import { useState } from "react";
 import { motion } from "framer-motion";
 import { Check, Zap } from "lucide-react";
 import { useRouter } from "next/navigation";
+import { useToast } from "@/components/ui/Toast";
 
 declare global {
   interface Window {
@@ -64,6 +65,7 @@ function loadRazorpay(): Promise<boolean> {
 export default function BillingPage() {
   const [loading, setLoading] = useState<string | null>(null);
   const router = useRouter();
+  const toast = useToast();
 
   const handleUpgrade = async (planId: string) => {
     setLoading(planId);
@@ -104,7 +106,8 @@ export default function BillingPage() {
           });
           const result = await verifyRes.json();
           if (result.ok) {
-            router.push("/dashboard?upgraded=1");
+            toast.success("Plan upgraded!", "Your credits have been added. Welcome to " + planId + ".");
+            router.push("/dashboard");
             router.refresh();
           }
         },
@@ -114,7 +117,7 @@ export default function BillingPage() {
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       console.error("[billing]", msg);
-      alert(`Error: ${msg}`);
+      toast.error("Payment failed", msg);
     } finally {
       setLoading(null);
     }

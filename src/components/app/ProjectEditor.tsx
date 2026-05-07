@@ -4,6 +4,7 @@ import { useState, useRef, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Send, Download, RotateCcw, Smartphone, Code2, ChevronDown, Loader2 } from "lucide-react";
 import type { Project, ProjectFile } from "@/lib/supabase/types";
+import { useToast } from "@/components/ui/Toast";
 
 type Message = { role: "user" | "assistant"; content: string };
 
@@ -144,6 +145,7 @@ export default function ProjectEditor({
   const classifyTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [exporting, setExporting] = useState(false);
   const chatEndRef = useRef<HTMLDivElement>(null);
+  const toast = useToast();
 
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -186,12 +188,13 @@ export default function ProjectEditor({
         body: JSON.stringify({ projectId: project.id, message: userMsg, files }),
       });
       const data = await res.json();
-      setMessages((m) => [...m, {
-        role: "assistant",
-        content: data.reply ?? "Changes applied.",
-      }]);
-    } catch {
-      setMessages((m) => [...m, { role: "assistant", content: "Something went wrong. Try again." }]);
+      if (!res.ok) throw new Error(data.error ?? "Edit failed");
+      setMessages((m) => [...m, { role: "assistant", content: data.reply ?? "Changes applied." }]);
+      toast.success("Change applied");
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Something went wrong.";
+      setMessages((m) => [...m, { role: "assistant", content: msg }]);
+      toast.error("Edit failed", msg);
     } finally {
       setSending(false);
     }
@@ -205,6 +208,10 @@ export default function ProjectEditor({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ projectId: project.id }),
       });
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error ?? "Export failed");
+      }
       const blob = await res.blob();
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
@@ -212,6 +219,10 @@ export default function ProjectEditor({
       a.download = `${project.name.replace(/\s+/g, "-").toLowerCase()}.zip`;
       a.click();
       URL.revokeObjectURL(url);
+      toast.success("ZIP downloaded", "Your source code is ready.");
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Export failed.";
+      toast.error("Export failed", msg);
     } finally {
       setExporting(false);
     }
