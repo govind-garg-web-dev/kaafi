@@ -2,9 +2,11 @@
 
 import { useState, useRef, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Send, Download, RotateCcw, Smartphone, Code2, ChevronDown, Loader2 } from "lucide-react";
+import { Send, Download, RotateCcw, Smartphone, Code2, ChevronDown, Loader2, Pencil, Trash2, Check, X } from "lucide-react";
 import type { Project, ProjectFile } from "@/lib/supabase/types";
 import { useToast } from "@/components/ui/Toast";
+import ConfirmDialog from "@/components/ui/ConfirmDialog";
+import { useRouter } from "next/navigation";
 
 type Message = { role: "user" | "assistant"; content: string };
 
@@ -144,12 +146,57 @@ export default function ProjectEditor({
   const [classifying, setClassifying] = useState(false);
   const classifyTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [exporting, setExporting] = useState(false);
+  const [projectName, setProjectName] = useState(project.name);
+  const [editingName, setEditingName] = useState(false);
+  const [savingName, setSavingName] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const nameInputRef = useRef<HTMLInputElement>(null);
   const chatEndRef = useRef<HTMLDivElement>(null);
   const toast = useToast();
+  const router = useRouter();
 
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
+
+  // Rename project
+  const handleRename = async () => {
+    const trimmed = projectName.trim();
+    if (!trimmed || trimmed === project.name) { setEditingName(false); return; }
+    setSavingName(true);
+    try {
+      const res = await fetch(`/api/projects/${project.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: trimmed }),
+      });
+      if (!res.ok) throw new Error((await res.json()).error);
+      toast.success("Renamed", `Project renamed to "${trimmed}".`);
+      setEditingName(false);
+    } catch (err) {
+      toast.error("Rename failed", err instanceof Error ? err.message : "Try again.");
+      setProjectName(project.name); // revert
+    } finally {
+      setSavingName(false);
+    }
+  };
+
+  // Delete project
+  const handleDelete = async () => {
+    setDeleting(true);
+    try {
+      const res = await fetch(`/api/projects/${project.id}`, { method: "DELETE" });
+      if (!res.ok) throw new Error((await res.json()).error);
+      toast.success("Deleted", "Project has been deleted.");
+      router.push("/dashboard");
+    } catch (err) {
+      toast.error("Delete failed", err instanceof Error ? err.message : "Try again.");
+      setShowDeleteConfirm(false);
+    } finally {
+      setDeleting(false);
+    }
+  };
 
   // Debounced credit cost classification
   const handleInputChange = (val: string) => {
@@ -313,19 +360,63 @@ export default function ProjectEditor({
       {/* Right: Chat */}
       <div className="w-80 flex-shrink-0 flex flex-col">
         {/* Chat header */}
-        <div className="h-14 border-b border-white/5 flex items-center justify-between px-4 flex-shrink-0">
-          <div>
-            <p className="text-white text-sm font-semibold line-clamp-1" style={{ fontFamily: "var(--font-playfair)" }}>
-              {project.name}
-            </p>
+        <div className="h-14 border-b border-white/5 flex items-center justify-between px-4 flex-shrink-0 gap-2">
+          <div className="flex-1 min-w-0">
+            {editingName ? (
+              <div className="flex items-center gap-1">
+                <input
+                  ref={nameInputRef}
+                  value={projectName}
+                  onChange={(e) => setProjectName(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") handleRename();
+                    if (e.key === "Escape") { setProjectName(project.name); setEditingName(false); }
+                  }}
+                  autoFocus
+                  className="flex-1 bg-transparent text-white text-sm font-semibold outline-none border-b border-violet-500 pb-0.5 min-w-0"
+                  style={{ fontFamily: "var(--font-playfair)" }}
+                />
+                <button onClick={handleRename} disabled={savingName} className="text-violet-400 hover:text-violet-300 p-1 flex-shrink-0">
+                  {savingName ? <Loader2 size={13} className="animate-spin" /> : <Check size={13} />}
+                </button>
+                <button onClick={() => { setProjectName(project.name); setEditingName(false); }} className="text-[#64748b] hover:text-white p-1 flex-shrink-0">
+                  <X size={13} />
+                </button>
+              </div>
+            ) : (
+              <button
+                onClick={() => setEditingName(true)}
+                className="flex items-center gap-1.5 group text-left w-full"
+              >
+                <p className="text-white text-sm font-semibold line-clamp-1 group-hover:text-violet-300 transition-colors" style={{ fontFamily: "var(--font-playfair)" }}>
+                  {projectName}
+                </p>
+                <Pencil size={11} className="text-[#4a5568] group-hover:text-violet-400 flex-shrink-0 transition-colors" />
+              </button>
+            )}
             <p className="text-[#4a5568] text-xs" style={{ fontFamily: "var(--font-inter)" }}>
               {files.length} files · 1 credit/edit
             </p>
           </div>
-          <button title="Rollback" className="text-[#4a5568] hover:text-white transition-colors p-1.5 rounded-lg hover:bg-white/5">
-            <RotateCcw size={14} />
+          <button
+            onClick={() => setShowDeleteConfirm(true)}
+            title="Delete project"
+            className="text-[#4a5568] hover:text-red-400 transition-colors p-1.5 rounded-lg hover:bg-red-500/8 flex-shrink-0"
+          >
+            <Trash2 size={14} />
           </button>
         </div>
+
+        {/* Delete confirmation */}
+        <ConfirmDialog
+          open={showDeleteConfirm}
+          title="Delete this project?"
+          message={`"${projectName}" and all its files will be permanently deleted. This cannot be undone.`}
+          confirmLabel="Delete project"
+          loading={deleting}
+          onConfirm={handleDelete}
+          onCancel={() => setShowDeleteConfirm(false)}
+        />
 
         {/* Messages */}
         <div className="flex-1 overflow-y-auto p-4 flex flex-col gap-3" style={{ scrollbarWidth: "thin", scrollbarColor: "#2a2a4a transparent" }}>
