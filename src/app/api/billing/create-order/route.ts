@@ -42,7 +42,8 @@ export async function POST(req: NextRequest) {
       keyId: process.env.RAZORPAY_KEY_ID,
     });
   } catch (err) {
-    console.error("[/api/billing/create-order]", err);
-    return NextResponse.json({ error: "Failed to create order." }, { status: 500 });
+    const msg = err instanceof Error ? err.message : JSON.stringify(err);
+    console.error("[/api/billing/create-order]", msg);
+    return NextResponse.json({ error: msg }, { status: 500 });
   }
 }
