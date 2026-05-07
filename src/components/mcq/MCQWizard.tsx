@@ -242,9 +242,11 @@ function SummaryCard({
 export default function MCQWizard({
   appIdea,
   questions,
+  onComplete,
 }: {
   appIdea: string;
   questions: MCQQuestion[];
+  onComplete?: (answers: Record<string, string>) => void;
 }) {
   const [questionIdx, setQuestionIdx] = useState(0);
   const [answers, setAnswers] = useState<Answers>({});
@@ -268,7 +270,14 @@ export default function MCQWizard({
 
   const handleNext = () => {
     if (!selectedForCurrent) return;
-    if (isLast) { setDone(true); return; }
+    if (isLast) {
+      if (onComplete) {
+        onComplete({ ...answers, [currentQuestion.id]: selectedForCurrent });
+      } else {
+        setDone(true);
+      }
+      return;
+    }
     setDirection(1);
     setQuestionIdx((i) => i + 1);
   };
