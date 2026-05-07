@@ -30,7 +30,7 @@ export async function POST(req: NextRequest) {
     const order = await getRazorpay().orders.create({
       amount: planConfig.amount,
       currency: "INR",
-      receipt: `kaafi_${user.id}_${Date.now()}`,
+      receipt: `k_${user.id.slice(0, 8)}_${Date.now().toString().slice(-8)}`,
       notes: { user_id: user.id, plan, description: planConfig.name },
     });
 
