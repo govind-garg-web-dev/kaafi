@@ -139,12 +139,38 @@ export default function ProjectEditor({
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
+  const [creditEstimate, setCreditEstimate] = useState<{ type: "light" | "heavy"; credits: 1 | 2 } | null>(null);
+  const [classifying, setClassifying] = useState(false);
+  const classifyTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [exporting, setExporting] = useState(false);
   const chatEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
+
+  // Debounced credit cost classification
+  const handleInputChange = (val: string) => {
+    setInput(val);
+    if (classifyTimer.current) clearTimeout(classifyTimer.current);
+    if (!val.trim()) { setCreditEstimate(null); setClassifying(false); return; }
+    setClassifying(true);
+    classifyTimer.current = setTimeout(async () => {
+      try {
+        const res = await fetch("/api/ai/classify", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ message: val.trim() }),
+        });
+        const data = await res.json();
+        setCreditEstimate(data);
+      } catch {
+        setCreditEstimate({ type: "light", credits: 1 });
+      } finally {
+        setClassifying(false);
+      }
+    }, 600);
+  };
 
   const handleSend = async () => {
     if (!input.trim() || sending) return;
@@ -348,7 +374,7 @@ export default function ProjectEditor({
           <div className="flex gap-2 items-end">
             <textarea
               value={input}
-              onChange={(e) => setInput(e.target.value)}
+              onChange={(e) => handleInputChange(e.target.value)}
               onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSend(); } }}
               placeholder="Describe a change…"
               rows={2}
@@ -363,9 +389,34 @@ export default function ProjectEditor({
               {sending ? <Loader2 size={15} className="animate-spin" /> : <Send size={15} />}
             </button>
           </div>
-          <p className="text-[#3a3a5a] text-xs mt-1.5 px-1" style={{ fontFamily: "var(--font-inter)" }}>
-            ~1 credit per edit · Enter to send
-          </p>
+
+          {/* Credit cost estimate */}
+          <div className="flex items-center justify-between mt-1.5 px-1">
+            <AnimatePresence mode="wait">
+              {classifying && input.trim() ? (
+                <motion.span key="classifying" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+                  className="text-xs text-[#3a3a5a] flex items-center gap-1" style={{ fontFamily: "var(--font-inter)" }}>
+                  <Loader2 size={10} className="animate-spin" /> estimating…
+                </motion.span>
+              ) : creditEstimate && input.trim() ? (
+                <motion.span key="estimate" initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
+                  className="text-xs font-semibold px-2 py-0.5 rounded-full"
+                  style={{
+                    fontFamily: "var(--font-inter)",
+                    background: creditEstimate.type === "heavy" ? "rgba(245,158,11,0.12)" : "rgba(124,92,252,0.12)",
+                    color: creditEstimate.type === "heavy" ? "#f59e0b" : "#a78bfa",
+                  }}>
+                  ~{creditEstimate.credits} credit{creditEstimate.credits > 1 ? "s" : ""} · {creditEstimate.type} edit
+                </motion.span>
+              ) : (
+                <motion.span key="default" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+                  className="text-xs text-[#3a3a5a]" style={{ fontFamily: "var(--font-inter)" }}>
+                  ~1–2 credits per edit
+                </motion.span>
+              )}
+            </AnimatePresence>
+            <span className="text-xs text-[#3a3a5a]" style={{ fontFamily: "var(--font-inter)" }}>Enter to send</span>
+          </div>
         </div>
       </div>
     </div>
