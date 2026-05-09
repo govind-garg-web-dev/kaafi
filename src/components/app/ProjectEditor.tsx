@@ -2,13 +2,15 @@
 
 import { useState, useRef, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Send, Download, RotateCcw, Smartphone, Code2, ChevronDown, Loader2, Pencil, Trash2, Check, X } from "lucide-react";
+import { Send, Download, RotateCcw, Smartphone, Code2, ChevronDown, Loader2, Pencil, Trash2, Check, X, Hammer } from "lucide-react";
 import type { Project, ProjectFile } from "@/lib/supabase/types";
 import { useToast } from "@/components/ui/Toast";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import DynamicPreview from "@/components/app/DynamicPreview";
 import type { PreviewData } from "@/lib/preview-parser";
 import { useRouter } from "next/navigation";
+
+type UserPlan = "hobby" | "builder" | "studio";
 
 type Message = { role: "user" | "assistant"; content: string };
 
@@ -134,10 +136,12 @@ export default function ProjectEditor({
   project,
   files: initialFiles,
   previewData,
+  userPlan = "hobby",
 }: {
   project: Project;
   files: ProjectFile[];
   previewData: PreviewData;
+  userPlan?: UserPlan;
 }) {
   const [files] = useState(initialFiles);
   const [activeTab, setActiveTab] = useState<"preview" | "code">("preview");
@@ -150,6 +154,8 @@ export default function ProjectEditor({
   const [classifying, setClassifying] = useState(false);
   const classifyTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [exporting, setExporting] = useState(false);
+  const [building, setBuilding] = useState(false);
+  const [showBuildGuide, setShowBuildGuide] = useState(false);
   const [projectName, setProjectName] = useState(project.name);
   const [editingName, setEditingName] = useState(false);
   const [savingName, setSavingName] = useState(false);
@@ -279,6 +285,38 @@ export default function ProjectEditor({
     }
   };
 
+  const handleBuild = async () => {
+    if (userPlan !== "studio") {
+      toast.warning("Studio required", "Cloud builds are only available on the Studio plan.");
+      return;
+    }
+    setBuilding(true);
+    try {
+      const res = await fetch("/api/build", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ projectId: project.id, platform: "android" }),
+      });
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error ?? "Build failed");
+      }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${project.name.toLowerCase().replace(/\s+/g, "-")}-eas-ready.zip`;
+      a.click();
+      URL.revokeObjectURL(url);
+      toast.success("EAS-ready ZIP downloaded", "Follow BUILD_GUIDE.md inside the ZIP to build your APK.");
+      setShowBuildGuide(true);
+    } catch (err) {
+      toast.error("Build failed", err instanceof Error ? err.message : "Try again.");
+    } finally {
+      setBuilding(false);
+    }
+  };
+
   return (
     <div className="flex h-screen overflow-hidden">
       {/* Left: Preview + Code */}
@@ -346,6 +384,29 @@ export default function ProjectEditor({
               {exporting ? <Loader2 size={12} className="animate-spin" /> : <Download size={12} />}
               Export ZIP
             </button>
+
+            {/* Build APK — Studio only */}
+            <button
+              onClick={handleBuild}
+              disabled={building}
+              title={userPlan !== "studio" ? "Upgrade to Studio to build APK" : "Build EAS-ready APK"}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-xl transition-all disabled:opacity-60"
+              style={{
+                background: userPlan === "studio" ? "rgba(245,158,11,0.12)" : "rgba(255,255,255,0.04)",
+                border: `1px solid ${userPlan === "studio" ? "rgba(245,158,11,0.3)" : "rgba(255,255,255,0.08)"}`,
+                color: userPlan === "studio" ? "#f59e0b" : "#64748b",
+                fontFamily: "var(--font-inter)",
+              }}
+            >
+              {building ? <Loader2 size={12} className="animate-spin" /> : <Hammer size={12} />}
+              Build APK
+              {userPlan !== "studio" && (
+                <span className="text-[10px] px-1 py-0.5 rounded ml-0.5"
+                  style={{ background: "rgba(245,158,11,0.1)", color: "#f59e0b" }}>
+                  Studio
+                </span>
+              )}
+            </button>
           </div>
         </div>
 
@@ -412,6 +473,50 @@ export default function ProjectEditor({
             <Trash2 size={14} />
           </button>
         </div>
+
+        {/* Build guide modal */}
+        <AnimatePresence>
+          {showBuildGuide && (
+            <>
+              <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+                onClick={() => setShowBuildGuide(false)}
+                className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm" />
+              <div className="fixed inset-0 z-50 flex items-center justify-center px-4">
+                <motion.div initial={{ opacity: 0, scale: 0.92 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.92 }}
+                  transition={{ type: "spring", damping: 22, stiffness: 260 }}
+                  className="w-full max-w-md rounded-2xl p-6"
+                  style={{ background: "#0e0e1c", border: "1px solid rgba(255,255,255,0.08)", boxShadow: "0 40px 120px rgba(0,0,0,0.6)" }}>
+                  <div className="flex items-center gap-2 mb-4">
+                    <div className="w-8 h-8 rounded-xl flex items-center justify-center" style={{ background: "rgba(245,158,11,0.12)" }}>
+                      <Hammer size={16} className="text-amber-400" />
+                    </div>
+                    <h3 className="text-white font-bold" style={{ fontFamily: "var(--font-playfair)" }}>Build your APK</h3>
+                  </div>
+                  <p className="text-[#64748b] text-sm mb-4" style={{ fontFamily: "var(--font-inter)" }}>
+                    Your EAS-ready ZIP has been downloaded. Run these commands to build:
+                  </p>
+                  {[
+                    "npm install -g @expo/eas-cli",
+                    "eas login",
+                    "npm install",
+                    "eas build --platform android --profile preview",
+                  ].map((cmd) => (
+                    <div key={cmd} className="mb-2 px-3 py-2 rounded-lg font-mono text-xs text-green-400"
+                      style={{ background: "rgba(0,0,0,0.4)", border: "1px solid rgba(255,255,255,0.06)" }}>
+                      $ {cmd}
+                    </div>
+                  ))}
+                  <p className="text-[#4a5568] text-xs mt-3 mb-4" style={{ fontFamily: "var(--font-inter)" }}>
+                    EAS will generate a keystore automatically. The APK download link appears in your terminal when done (~5–10 min).
+                  </p>
+                  <button onClick={() => setShowBuildGuide(false)} className="btn-primary w-full py-2.5 text-sm">
+                    Got it
+                  </button>
+                </motion.div>
+              </div>
+            </>
+          )}
+        </AnimatePresence>
 
         {/* Delete confirmation */}
         <ConfirmDialog

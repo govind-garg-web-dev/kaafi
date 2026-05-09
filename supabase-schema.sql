@@ -91,3 +91,22 @@ create policy "Users can read own transactions"
 
 create policy "Service role can insert transactions"
   on public.credit_transactions for insert with check (true);
+
+-- ── Builds ──────────────────────────────────────────────
+-- Run this block separately if you already ran the initial schema
+create table public.builds (
+  id            uuid primary key default uuid_generate_v4(),
+  project_id    uuid not null references public.projects(id) on delete cascade,
+  user_id       uuid not null references public.profiles(id) on delete cascade,
+  platform      text not null default 'android' check (platform in ('android', 'ios')),
+  status        text not null default 'queued' check (status in ('queued', 'building', 'finished', 'errored')),
+  eas_build_id  text,
+  download_url  text,
+  created_at    timestamptz not null default now(),
+  updated_at    timestamptz not null default now()
+);
+
+alter table public.builds enable row level security;
+
+create policy "Users can CRUD own builds"
+  on public.builds for all using (auth.uid() = user_id);
