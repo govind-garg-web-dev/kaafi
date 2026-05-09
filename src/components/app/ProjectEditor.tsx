@@ -149,6 +149,8 @@ export default function ProjectEditor({
   const [deviceOpen, setDeviceOpen] = useState(false);
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
+  const [snackUrl, setSnackUrl] = useState<string | null>(null);
+  const [loadingSnack, setLoadingSnack] = useState(false);
   const [sending, setSending] = useState(false);
   const [creditEstimate, setCreditEstimate] = useState<{ type: "light" | "heavy"; credits: 1 | 2 } | null>(null);
   const [classifying, setClassifying] = useState(false);
@@ -317,6 +319,26 @@ export default function ProjectEditor({
     }
   };
 
+  const handleLivePreview = async () => {
+    if (snackUrl) { setSnackUrl(null); return; } // toggle off
+    setLoadingSnack(true);
+    try {
+      const res = await fetch("/api/preview/snack", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ projectId: project.id }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      setSnackUrl(data.embedUrl);
+      toast.info("Live preview ready", "Your app is running — tap the screen to interact.");
+    } catch (err) {
+      toast.error("Preview failed", err instanceof Error ? err.message : "Try again.");
+    } finally {
+      setLoadingSnack(false);
+    }
+  };
+
   return (
     <div className="flex h-screen overflow-hidden">
       {/* Left: Preview + Code */}
@@ -375,6 +397,25 @@ export default function ProjectEditor({
               </div>
             )}
 
+            {/* Live preview toggle */}
+            <button
+              onClick={handleLivePreview}
+              disabled={loadingSnack}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-xl transition-all disabled:opacity-60"
+              style={{
+                background: snackUrl ? "rgba(52,211,153,0.12)" : "rgba(255,255,255,0.04)",
+                border: `1px solid ${snackUrl ? "rgba(52,211,153,0.3)" : "rgba(255,255,255,0.08)"}`,
+                color: snackUrl ? "#34d399" : "#94a3b8",
+                fontFamily: "var(--font-inter)",
+              }}
+            >
+              {loadingSnack
+                ? <Loader2 size={12} className="animate-spin" />
+                : <span style={{ fontSize: 11 }}>{snackUrl ? "▶ Live" : "▶ Live"}</span>
+              }
+              {loadingSnack ? "Creating…" : snackUrl ? "Exit Live" : "Live Preview"}
+            </button>
+
             {/* Export */}
             <button
               onClick={handleExport}
@@ -413,9 +454,23 @@ export default function ProjectEditor({
         {/* Preview / Code area */}
         <div className="flex-1 overflow-hidden flex items-center justify-center p-8">
           {activeTab === "preview" ? (
-            <PhoneBezel device={device}>
-              <DynamicPreview data={previewData} />
-            </PhoneBezel>
+            snackUrl ? (
+              /* Live Expo Snack iframe */
+              <PhoneBezel device={device}>
+                <div className="absolute inset-0 bg-white overflow-hidden">
+                  <iframe
+                    src={snackUrl}
+                    style={{ width: "100%", height: "100%", border: "none" }}
+                    allow="geolocation; camera; microphone"
+                    title="Live app preview"
+                  />
+                </div>
+              </PhoneBezel>
+            ) : (
+              <PhoneBezel device={device}>
+                <DynamicPreview data={previewData} />
+              </PhoneBezel>
+            )
           ) : (
             <div className="w-full h-full">
               <CodePane files={files} />
