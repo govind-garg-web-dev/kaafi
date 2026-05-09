@@ -6,6 +6,8 @@ import { Send, Download, RotateCcw, Smartphone, Code2, ChevronDown, Loader2, Pen
 import type { Project, ProjectFile } from "@/lib/supabase/types";
 import { useToast } from "@/components/ui/Toast";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
+import DynamicPreview from "@/components/app/DynamicPreview";
+import type { PreviewData } from "@/lib/preview-parser";
 import { useRouter } from "next/navigation";
 
 type Message = { role: "user" | "assistant"; content: string };
@@ -131,9 +133,11 @@ function CodePane({ files }: { files: ProjectFile[] }) {
 export default function ProjectEditor({
   project,
   files: initialFiles,
+  previewData,
 }: {
   project: Project;
   files: ProjectFile[];
+  previewData: PreviewData;
 }) {
   const [files] = useState(initialFiles);
   const [activeTab, setActiveTab] = useState<"preview" | "code">("preview");
@@ -348,7 +352,9 @@ export default function ProjectEditor({
         {/* Preview / Code area */}
         <div className="flex-1 overflow-hidden flex items-center justify-center p-8">
           {activeTab === "preview" ? (
-            <PreviewPane files={files} device={device} />
+            <PhoneBezel device={device}>
+              <DynamicPreview data={previewData} />
+            </PhoneBezel>
           ) : (
             <div className="w-full h-full">
               <CodePane files={files} />
