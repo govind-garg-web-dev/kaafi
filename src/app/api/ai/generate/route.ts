@@ -168,6 +168,154 @@ SAMPLE DATA — MOST IMPORTANT. Make it ultra-realistic for this specific app.
 Return ONLY the JSON object. Make every value feel like it came from a real, live app.`;
 }
 
+// ── Custom screen generation ──────────────────────────────
+// Writes complete, custom React Native screens using ALL 18 user answers.
+// This REPLACES the slot-fill approach for the main UI screens.
+// Slot values are still used for branding (color, name, items) and boilerplate.
+
+const SCREEN_GEN_SYSTEM_PROMPT = `You are an expert React Native developer building a beautiful, production-quality mobile app.
+
+The user has answered 18 questions about their app. You must write COMPLETE, CUSTOM React Native screens that reflect EVERY answer.
+
+TECH STACK — use exactly these:
+- React Native: View, Text, ScrollView, TouchableOpacity, TextInput, FlatList, SafeAreaView, Alert, KeyboardAvoidingView, Platform
+- Expo Router: import { router } from "expo-router"
+- Icons: import { Ionicons } from "@expo/vector-icons"
+- React: useState, useEffect
+- NativeWind: className prop for ALL styling. Use style prop ONLY for dynamic values (primaryColor).
+
+DESIGN RULES — every screen must look like a 5-star App Store app:
+- Page background: className="flex-1 bg-gray-50"
+- Header: pt-14 (safe area), bold large title (text-3xl font-bold text-gray-900), subtitle below
+- Cards: bg-white rounded-2xl shadow-sm p-4, gap-4 between cards in the list
+- Primary color usage: ALWAYS via style={{ backgroundColor: PRIMARY }} or style={{ color: PRIMARY }} — never as a className
+- Search bar: bg-gray-50 border border-gray-200 rounded-2xl px-4 py-3 flex-row items-center gap-2
+- Primary button: py-4 rounded-xl items-center + style={{ backgroundColor: PRIMARY }} + text-white font-semibold
+- Bottom scroll padding: pb-24 so content isn't hidden behind tab bar
+- Section headers: text-lg font-bold text-gray-900 mb-3
+
+OUTPUT FORMAT — JSON array ONLY, no markdown, no explanation:
+[
+  {"path": "app/(auth)/login.tsx", "content": "...complete file..."},
+  {"path": "app/(tabs)/index.tsx", "content": "...complete file..."},
+  {"path": "app/(tabs)/profile.tsx", "content": "...complete file..."}
+]`;
+
+async function generateCustomScreens(
+  idea: string,
+  questions: { id: string; question: string; options: { id: string; label: string }[] }[],
+  answers: Record<string, string>,
+  slotValues: Record<string, string>,
+  model: string,
+): Promise<{ path: string; content: string }[]> {
+  try {
+    const PRIMARY = slotValues.KAAFI_SLOT_PRIMARY_COLOR ?? "#7c5cfc";
+    const APP_NAME = slotValues.KAAFI_SLOT_APP_NAME ?? "My App";
+    const APP_ICON = slotValues.KAAFI_SLOT_APP_ICON ?? "apps-outline";
+    const LOGIN_TAGLINE = slotValues.KAAFI_SLOT_LOGIN_TAGLINE ?? "Welcome back";
+    const SIGNUP_TAGLINE = slotValues.KAAFI_SLOT_SIGNUP_TAGLINE ?? "Create your account";
+    const HEADER_TITLE = slotValues.KAAFI_SLOT_HEADER_TITLE ?? "Home";
+    const SEARCH_PLACEHOLDER = slotValues.KAAFI_SLOT_SEARCH_PLACEHOLDER ?? "Search...";
+    const CTA_LABEL = slotValues.KAAFI_SLOT_CTA_LABEL ?? "View";
+    const GREETING = slotValues.KAAFI_SLOT_GREETING ?? "Hey there";
+
+    // Build sample data string from slot values
+    const sampleItems = [1, 2, 3, 4, 5].map((n) => {
+      const title    = slotValues[`KAAFI_SLOT_ITEM${n}_TITLE`]    ?? `Item ${n}`;
+      const subtitle = slotValues[`KAAFI_SLOT_ITEM${n}_SUBTITLE`] ?? "";
+      const emoji    = slotValues[`KAAFI_SLOT_ITEM${n}_EMOJI`]    ?? "⭐";
+      const meta     = slotValues[`KAAFI_SLOT_ITEM${n}_META`]     ?? "";
+      return `  { id: "${n}", title: "${title}", subtitle: "${subtitle}", emoji: "${emoji}", meta: "${meta}" }`;
+    }).join(",\n");
+
+    // ALL 18 answers in plain English
+    const allAnswers = questions.map((q) => {
+      const opt = q.options.find((o) => o.id === answers[q.id]);
+      return `• ${q.question}: ${opt?.label ?? "(not answered)"}`;
+    }).join("\n");
+
+    const userPrompt = `Build a React Native app for: "${idea}"
+
+APP BRANDING:
+- Name: ${APP_NAME}
+- Primary color (hex): ${PRIMARY}
+- Icon: ${APP_ICON} (from Ionicons)
+- Login tagline: "${LOGIN_TAGLINE}"
+- Signup tagline: "${SIGNUP_TAGLINE}"
+- Header title: "${HEADER_TITLE}"
+- Search placeholder: "${SEARCH_PLACEHOLDER}"
+- CTA button label: "${CTA_LABEL}"
+- Greeting: "${GREETING}"
+
+ALL 18 USER REQUIREMENTS — implement EVERY one:
+${allAnswers}
+
+SAMPLE DATA (use exactly these in the home screen cards):
+[
+${sampleItems}
+]
+const PRIMARY = "${PRIMARY}"; // use this variable for all primary color styling
+
+---
+
+Write these 3 complete screen files. Each must be specific to "${idea}", not generic.
+
+### SCREEN 1: app/(auth)/login.tsx
+Look at the "sign-in method" answer above and implement accordingly:
+- "Email only" → email + password TextInput fields, sign in button
+- "Google / Apple" → a "Continue with Google" button with logo-google icon + separate "Continue with Apple"
+- "Phone / OTP" → phone number TextInput + "Send OTP" button (no password)
+- "No login / Guest" → single "Explore ${APP_NAME}" button that goes to /(tabs)
+Show: Ionicons icon (${APP_ICON}) in a primary color rounded square, app name (${APP_NAME}), tagline.
+Login button goes to router.replace("/(tabs)"), signup link goes to router.push("/(auth)/signup")
+
+### SCREEN 2: app/(tabs)/index.tsx
+This is the MOST IMPORTANT screen — make it completely reflect the app idea and user choices.
+- Header shows: greeting "${GREETING}", bold title "${HEADER_TITLE}", search bar
+- If notifications chosen: bell icon with a red dot (•) in the header right
+- Category filter row: horizontal scroll, 4 chip buttons for the app's categories
+- Main list: cards using the SAMPLE DATA above
+- Each card must show: emoji icon, title, subtitle, meta, and a CTA button ("${CTA_LABEL}")
+- If "Likes / Comments" chosen in social: add ❤️ icon + count and 💬 icon + count below each card
+- If "Ratings / Reviews" chosen: add ⭐ rating + count to each card
+- If "Real-time tracking" chosen: add a green "● Live" badge to relevant cards
+- Make the card content and UI SPECIFIC to this exact app — not generic shopping cards
+
+### SCREEN 3: app/(tabs)/profile.tsx
+- Large avatar circle (primary color bg) with user emoji 👤
+- Name and member meta text
+- Look at monetization answer:
+  - "Subscription / Freemium" → show a highlighted "⭐ Go Premium" card with 2-3 bullet benefits before the menu
+  - "Commission-based" → show an "Earnings This Month: ₹2,400" stats card
+  - "Free" or other → skip special monetization card
+- Profile menu list with app-appropriate items (use 3 relevant menu items for this app type)
+- Red "Sign out" button at the bottom
+
+Return ONLY the JSON array. No markdown. No explanation.`;
+
+    const response = await client.messages.create({
+      model,
+      max_tokens: 14000,
+      system: SCREEN_GEN_SYSTEM_PROMPT,
+      messages: [{ role: "user", content: userPrompt }],
+    });
+
+    const raw = response.content[0].type === "text" ? response.content[0].text : "";
+    const jsonStart = raw.indexOf("[");
+    const jsonEnd = raw.lastIndexOf("]");
+    if (jsonStart === -1 || jsonEnd === -1) throw new Error("No JSON array in screen gen response");
+
+    const screens: { path: string; content: string }[] = JSON.parse(raw.slice(jsonStart, jsonEnd + 1));
+    // Validate: only accept files that look like valid React Native
+    return screens.filter(
+      (s) => s.path && s.content && s.content.includes("export default") && s.content.includes("import")
+    );
+  } catch (err) {
+    console.warn("[generate] Screen generation failed, falling back to scaffold:", err instanceof Error ? err.message : err);
+    return []; // fall back to slot-filled scaffold
+  }
+}
+
 // ── Feature implementation pass ──────────────────────────
 // Uses the user's 18 MCQ answers to make real code changes.
 // Answers about auth method, core features, social, monetization etc.
@@ -451,42 +599,22 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // Apply slots to every scaffold file programmatically
+    // Apply slots to scaffold — gives us boilerplate files (app.json, layouts, store, etc.)
     let patches = Object.entries(scaffold).map(([path, template]) => ({
       path,
       content: applySlots(template, slotValues),
     }));
 
-    // Feature implementation pass — make the user's 18 answers visible in code
-    const featurePatches = await implementUserFeatures(idea, questions ?? [], answers, patches);
-    if (featurePatches.length > 0) {
-      const featureMap = new Map(featurePatches.map((p) => [p.path, p.content]));
-      patches = patches.map((p) =>
-        featureMap.has(p.path) ? { ...p, content: featureMap.get(p.path)! } : p
-      );
-    }
-
-    // Design enhancement pass — run in parallel on all key screens
-    const SCREENS_TO_ENHANCE = [
-      "app/(tabs)/index.tsx",    // main home screen
-      "app/(tabs)/profile.tsx",  // profile tab
-      "app/(auth)/login.tsx",    // first screen users see
-    ];
-
-    const enhancementResults = await Promise.all(
-      SCREENS_TO_ENHANCE.map(async (screenPath) => {
-        const idx = patches.findIndex((p) => p.path === screenPath);
-        if (idx === -1) return null;
-        const enhanced = await enhanceMainScreen(patches[idx].content);
-        return { path: screenPath, content: enhanced };
-      })
+    // Custom screen generation — writes complete, specific React Native screens
+    // using ALL 18 user answers. This replaces the main UI screens in the scaffold
+    // with AI-written code that actually reflects what the user chose.
+    const customScreens = await generateCustomScreens(
+      idea, questions ?? [], answers, slotValues, model
     );
-
-    // Apply all enhanced screens back into patches
-    for (const result of enhancementResults) {
-      if (!result) continue;
+    if (customScreens.length > 0) {
+      const screenMap = new Map(customScreens.map((s) => [s.path, s.content]));
       patches = patches.map((p) =>
-        p.path === result.path ? { ...p, content: result.content } : p
+        screenMap.has(p.path) ? { ...p, content: screenMap.get(p.path)! } : p
       );
     }
 
