@@ -319,6 +319,39 @@ export default function ProjectEditor({
 
   const handleVisualEdit = async (field: string, oldValue: string, newValue: string) => {
     if (!newValue.trim() || newValue === oldValue) return;
+
+    // Optimistic update — apply to files state immediately so the preview
+    // stays correct when visual edit mode is toggled off before the API responds
+    const targetPath =
+      field === "primaryColor" ? "tailwind.config.js" :
+      field === "appName"      ? "app.json" :
+                                  "app/(tabs)/index.tsx";
+
+    setFiles((prev) => prev.map((f) => {
+      if (f.path !== targetPath) return f;
+      let content = f.content;
+      if (field === "primaryColor") {
+        content = content.replace(/primary:\s*["'][^"']*["']/, `primary: "${newValue}"`);
+      } else if (field === "appName") {
+        try {
+          const json = JSON.parse(content);
+          if (json?.expo) json.expo.name = newValue;
+          content = JSON.stringify(json, null, 2);
+        } catch { /* keep original */ }
+      } else if (field === "searchPlaceholder") {
+        content = content.replace(`placeholder="${oldValue}"`, `placeholder="${newValue}"`)
+                         .replace(`placeholder='${oldValue}'`, `placeholder='${newValue}'`);
+      } else {
+        // headerTitle / ctaLabel — replace between JSX tags
+        const between = `>${oldValue}<`;
+        content = content.includes(between)
+          ? content.replace(between, `>${newValue}<`)
+          : content.replace(oldValue, newValue);
+      }
+      return { ...f, content };
+    }));
+
+    // Sync to server in the background
     try {
       const res = await fetch(`/api/projects/${project.id}/visual-edit`, {
         method: "PATCH",
@@ -327,13 +360,10 @@ export default function ProjectEditor({
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Visual edit failed");
-
-      // Update the changed file in local state so livePreviewData recalculates
-      setFiles((prev) =>
-        prev.map((f) => f.path === data.path ? { ...f, content: data.content } : f)
-      );
+      // Reconcile with authoritative server content
+      setFiles((prev) => prev.map((f) => f.path === data.path ? { ...f, content: data.content } : f));
     } catch (err) {
-      toast.error("Edit failed", err instanceof Error ? err.message : "Try again.");
+      toast.error("Save failed", err instanceof Error ? err.message : "Could not save change.");
     }
   };
 
