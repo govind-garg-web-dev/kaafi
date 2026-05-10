@@ -661,9 +661,9 @@ export default function ProjectEditor({
           {activeTab === "preview" ? (
             snackUrl ? (
               /* Live Expo Snack iframe
-                 Snack embed: ~60% code editor (left) + ~40% preview (right).
-                 Anchored to right so only the preview panel shows in the bezel.
-                 Iframe is 835px wide so the 270px bezel shows just the preview. */
+                 Snack embed: ~60% code (left) + ~40% preview (right).
+                 right: -20 lets the iframe bleed 20px past the right edge (overflow:hidden clips it),
+                 which hides the scrollbar. Width 840 keeps content aligned with first good version. */
               <PhoneBezel device={device}>
                 <div className="absolute inset-0 overflow-hidden" style={{ background: "#f8fafc" }}>
                   <iframe
@@ -671,21 +671,31 @@ export default function ProjectEditor({
                     style={{
                       position: "absolute",
                       top: 0,
-                      right: 12, /* slight inset to clip the scrollbar */
-                      width: 850,
+                      right: -20,
+                      width: 840,
                       height: "100%",
                       border: "none",
                     }}
                     allow="geolocation; camera; microphone"
                     title="Live app preview"
                   />
-                  {/* Cover the Expo branding button in top-right of preview */}
+                  {/* Cover Expo branding button — top-right of preview */}
                   <div style={{
                     position: "absolute",
-                    top: 0,
+                    top: 28,
                     right: 0,
-                    width: 90,
-                    height: 44,
+                    width: 85,
+                    height: 42,
+                    background: "white",
+                    zIndex: 10,
+                  }} />
+                  {/* Cover platform toggle button — bottom-right of preview */}
+                  <div style={{
+                    position: "absolute",
+                    bottom: 0,
+                    right: 0,
+                    width: 70,
+                    height: 52,
                     background: "white",
                     zIndex: 10,
                   }} />
