@@ -49,14 +49,23 @@ export async function POST(req: NextRequest) {
       }],
     });
 
-    const raw = response.content[0].type === "text" ? response.content[0].text : "{}";
-    const cleaned = raw.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "").trim();
-    const { patches, reply } = JSON.parse(cleaned);
+    const raw = response.content[0].type === "text" ? response.content[0].text : "";
+
+    // Robust JSON extraction — find the outermost { } regardless of surrounding text or code fences
+    const jsonStart = raw.indexOf("{");
+    const jsonEnd = raw.lastIndexOf("}");
+    if (jsonStart === -1 || jsonEnd === -1) {
+      console.error("[/api/ai/edit] No JSON object found in response:", raw.slice(0, 200));
+      return NextResponse.json({ error: "The AI returned an unexpected response. Please try rephrasing your edit." }, { status: 500 });
+    }
+
+    const { patches, reply } = JSON.parse(raw.slice(jsonStart, jsonEnd + 1));
 
     // Return patches for the client to show in DiffViewer — no credits deducted yet, no DB writes yet
     return NextResponse.json({ patches: patches ?? [], reply: reply ?? "Changes ready to apply." });
   } catch (err) {
-    console.error("[/api/ai/edit]", err);
-    return NextResponse.json({ error: "Edit failed." }, { status: 500 });
+    const msg = err instanceof Error ? err.message : "Unknown error";
+    console.error("[/api/ai/edit]", msg);
+    return NextResponse.json({ error: `Edit failed: ${msg}` }, { status: 500 });
   }
 }

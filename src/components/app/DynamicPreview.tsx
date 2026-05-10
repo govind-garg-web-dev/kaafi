@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef } from "react";
+import { useRef, useLayoutEffect } from "react";
 import type { PreviewData } from "@/lib/preview-parser";
 
 // ── Editable text node ───────────────────────────────────
@@ -18,6 +18,17 @@ function EditableText({
   style?: React.CSSProperties;
 }) {
   const ref = useRef<HTMLSpanElement>(null);
+  // Track the value at the time the user started editing so onBlur can diff correctly
+  const savedValueRef = useRef(value);
+
+  // Set DOM content imperatively — never pass children to contentEditable
+  // so React never clobbers the user's in-progress edits on re-render
+  useLayoutEffect(() => {
+    if (ref.current && document.activeElement !== ref.current) {
+      ref.current.textContent = value;
+      savedValueRef.current = value;
+    }
+  }, [value]);
 
   if (!editMode) {
     return <span style={style}>{value}</span>;
@@ -28,19 +39,29 @@ function EditableText({
       ref={ref}
       contentEditable
       suppressContentEditableWarning
-      onFocus={(e) => {
+      onFocus={() => {
+        savedValueRef.current = ref.current?.textContent ?? value;
         // Select all text on focus for easy replacement
-        const range = document.createRange();
-        range.selectNodeContents(e.currentTarget);
-        window.getSelection()?.removeAllRanges();
-        window.getSelection()?.addRange(range);
+        if (ref.current) {
+          const range = document.createRange();
+          range.selectNodeContents(ref.current);
+          window.getSelection()?.removeAllRanges();
+          window.getSelection()?.addRange(range);
+        }
       }}
-      onBlur={(e) => {
-        const newValue = e.currentTarget.textContent ?? value;
-        if (newValue !== value) onEdit(field, value, newValue);
+      onBlur={() => {
+        const newValue = ref.current?.textContent ?? value;
+        if (newValue !== savedValueRef.current) {
+          onEdit(field, savedValueRef.current, newValue);
+        }
       }}
       onKeyDown={(e) => {
-        if (e.key === "Enter") { e.preventDefault(); e.currentTarget.blur(); }
+        if (e.key === "Enter") { e.preventDefault(); ref.current?.blur(); }
+        if (e.key === "Escape") {
+          // Restore original text and blur
+          if (ref.current) ref.current.textContent = savedValueRef.current;
+          ref.current?.blur();
+        }
       }}
       style={{
         ...style,
@@ -50,9 +71,7 @@ function EditableText({
         cursor: "text",
         padding: "0 2px",
       }}
-    >
-      {value}
-    </span>
+    />
   );
 }
 
