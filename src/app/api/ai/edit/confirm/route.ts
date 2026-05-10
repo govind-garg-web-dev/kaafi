@@ -57,11 +57,14 @@ export async function POST(req: NextRequest) {
       await supabase.from("project_snapshots").delete().in("id", toDelete);
     }
 
-    // Apply patches to DB
+    // Apply patches to DB — update existing rows by (project_id, path)
+    // Never upsert without onConflict: it inserts duplicates instead of updating
     for (const patch of patches as { path: string; content: string }[]) {
       await supabase
         .from("project_files")
-        .upsert({ project_id: projectId, path: patch.path, content: patch.content });
+        .update({ content: patch.content })
+        .eq("project_id", projectId)
+        .eq("path", patch.path);
     }
 
     return NextResponse.json({ ok: true });

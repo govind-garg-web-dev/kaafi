@@ -36,11 +36,13 @@ export async function POST(req: NextRequest, { params }: Params) {
 
     const files = snapshot.files as { path: string; content: string }[];
 
-    // Restore each file in the snapshot
+    // Restore each file — update existing rows, never upsert (creates duplicates)
     for (const file of files) {
       await supabase
         .from("project_files")
-        .upsert({ project_id: projectId, path: file.path, content: file.content });
+        .update({ content: file.content })
+        .eq("project_id", projectId)
+        .eq("path", file.path);
     }
 
     // Delete the used snapshot so the next undo goes one step further back
