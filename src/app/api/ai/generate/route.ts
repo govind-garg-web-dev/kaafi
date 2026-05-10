@@ -27,9 +27,62 @@ function applySlots(template: string, slots: Record<string, string>): string {
   return result;
 }
 
-const SYSTEM_PROMPT = `You are Kaafi's app content generator. Given an app idea and user preferences, return a JSON object mapping slot names to values that will be injected into a React Native app template.
+const SYSTEM_PROMPT = `You are Kaafi's app content and design generator. You fill in values for a React Native app template. Think like a senior product designer, not a developer filling blanks.
+
+Your output determines how professional and distinctive the app feels. Be specific, creative, and on-brand.
 
 Return ONLY valid JSON. No markdown. No explanation.`;
+
+// ── Design enhancement prompt ─────────────────────────────
+// Used in a second pass to polish the main screen's visual design
+const DESIGN_SYSTEM_PROMPT = `You are a senior React Native UI designer who has shipped dozens of 5-star apps on the App Store.
+
+You will receive a React Native + NativeWind (Tailwind CSS) screen file. Your job is to make it look STUNNING — modern, polished, and premium — without changing any logic, state, imports, or data.
+
+APPLY THESE SPECIFIC IMPROVEMENTS:
+
+TYPOGRAPHY
+- Main header: text-3xl font-bold tracking-tight (not text-2xl)
+- Section titles: text-lg font-bold text-gray-900 mb-1
+- Body text: text-sm leading-relaxed
+- Meta/secondary: text-xs text-gray-400 font-medium
+- Prices/highlights: font-bold + primary color via style prop
+
+CARDS & LISTS
+- Cards: rounded-2xl (never rounded-xl for cards), bg-white, no border, add shadow-sm
+- Card padding: p-4 minimum (not p-3)
+- Gap between cards: gap-4 (not gap-3)
+- Image/emoji containers: h-32 or taller, rounded-2xl, use primaryColor + "15" for background
+- List items: generous vertical padding py-4
+
+HEADER AREA
+- Safe area: always pt-14 for the top container (iPhone notch)
+- Give headers more visual weight — bigger text, a short bold subtitle beneath
+- Search bars: rounded-2xl (not rounded-xl), add border border-gray-200 bg-gray-50
+
+BUTTONS & CTAs
+- Primary buttons: rounded-xl py-3 px-5 font-semibold shadow-sm
+- Icon buttons: minimum w-9 h-9, rounded-xl
+- CTA inside cards: rounded-lg px-3 py-1.5 font-semibold text-xs
+
+SPACING
+- Horizontal scroll containers: px-5 (not px-4)
+- Bottom of scroll content: pb-8 (leaves room above tab bar)
+- Between major sections: mt-6 or gap-6
+
+PRIMARY COLOR USAGE — use it richly, not just on one button:
+- Category chip (first one selected): backgroundColor primaryColor, text white
+- Icon containers: backgroundColor primaryColor + "12" or "18"
+- Price/rating text: color primaryColor
+- CTA buttons: backgroundColor primaryColor
+- Badge/tag backgrounds: backgroundColor primaryColor + "15", text primaryColor
+
+WHAT NOT TO CHANGE:
+- All imports, state variables, props, functions
+- All data references and logic
+- File structure and exports
+
+Return ONLY the improved file content. No markdown fences. No comments. No explanation.`;
 
 function buildSlotPrompt(
   idea: string,
@@ -46,44 +99,99 @@ function buildSlotPrompt(
 
   return `App idea: "${idea}"
 
-User's preferences:
+User preferences:
 ${answerLines}
 
-Fill in EVERY slot below with a specific, realistic value for this app. Return a flat JSON object.
+Fill EVERY slot. Return a flat JSON object. Think like a designer — every value should feel like it came from a real, polished app.
 
 Slots to fill:
 ${slots.join("\n")}
 
-Rules:
-- KAAFI_SLOT_APP_NAME: short, catchy name (2-3 words max)
-- KAAFI_SLOT_APP_SLUG: lowercase-hyphenated version of app name
-- KAAFI_SLOT_PRIMARY_COLOR: a hex color matching the vibe (e.g. "#7C3AED")
-- KAAFI_SLOT_ACCENT_COLOR: a complementary hex color
-- KAAFI_SLOT_APP_ICON: a valid Ionicons icon name (e.g. "paw-outline", "restaurant-outline")
-- KAAFI_SLOT_AUTH_METHOD: how users sign in (1 sentence)
-- KAAFI_SLOT_VIBE: the aesthetic description
-- KAAFI_SLOT_LOGIN_TAGLINE: 5-8 word welcome phrase
-- KAAFI_SLOT_SIGNUP_TAGLINE: 5-8 word signup encouragement
-- KAAFI_SLOT_GREETING: short greeting like "Good morning" or "Hey there"
-- KAAFI_SLOT_HEADER_TITLE: the home screen header title (4 words max)
-- KAAFI_SLOT_SEARCH_PLACEHOLDER: search bar placeholder text
-- KAAFI_SLOT_FEED_TITLE: section title for the main feed
-- KAAFI_SLOT_FEED_ITEM_TYPE: what each item in the feed represents
-- KAAFI_SLOT_CTA_LABEL: action button label (1-2 words, e.g. "Book", "Order", "View")
-- KAAFI_SLOT_TAB1_LABEL: first tab label (Home/Feed/Browse)
-- KAAFI_SLOT_TAB1_ICON: Ionicons icon for tab 1 (e.g. "home-outline")
-- KAAFI_SLOT_TAB2_LABEL: second tab label (Explore/Discover/Search)
-- KAAFI_SLOT_TAB2_ICON: Ionicons icon for tab 2 (e.g. "search-outline")
-- KAAFI_SLOT_EXPLORE_SUBTITLE: subtitle for explore/search screen
-- KAAFI_SLOT_EXPLORE_EMPTY_STATE: friendly empty state message
-- KAAFI_SLOT_CAT1 through CAT4: 4 category filter chip labels
-- KAAFI_SLOT_PROFILE_NAME: placeholder profile name
-- KAAFI_SLOT_PROFILE_META: profile subtitle (e.g. "Member since 2024")
-- KAAFI_SLOT_MENU1 + MENU1_ICON, MENU2 + MENU2_ICON, MENU3 + MENU3_ICON: 3 profile menu items with Ionicons names
-- KAAFI_SLOT_ITEM1 through ITEM5 (_TITLE, _SUBTITLE, _EMOJI, _META): 5 realistic sample feed items
-- KAAFI_SLOT_APP_DESCRIPTION: one-sentence app description
+RULES FOR EACH SLOT:
 
-Return ONLY the JSON object.`;
+APP IDENTITY
+- KAAFI_SLOT_APP_NAME: 2–3 words, catchy, memorable. NOT generic ("TrackIt", "ShopEasy"). Think real App Store names.
+- KAAFI_SLOT_APP_SLUG: lowercase-hyphenated version
+- KAAFI_SLOT_APP_DESCRIPTION: One confident sentence describing the value, like an App Store subtitle.
+- KAAFI_SLOT_APP_ICON: Ionicons name that perfectly represents the app (not just "apps-outline"). Be specific.
+
+COLOR — this is critical. Do NOT default to purple every time.
+- KAAFI_SLOT_PRIMARY_COLOR: Choose a DISTINCTIVE color that fits the exact app type:
+  · Food/restaurant/delivery → warm tones: #f97316 (orange), #ef4444 (red), #f59e0b (amber)
+  · Finance/money/expense → trust tones: #2563eb (blue), #0d9488 (teal), #16a34a (green)
+  · Health/fitness/wellness → fresh tones: #10b981 (emerald), #06b6d4 (cyan), #8b5cf6 (violet)
+  · Social/community/chat → vibrant tones: #ec4899 (pink), #f97316 (orange), #6366f1 (indigo)
+  · Marketplace/shopping → bold tones: #7c3aed (purple), #2563eb (blue), #dc2626 (red)
+  · Services/booking/local → professional: #1e40af (navy), #0369a1 (dark blue), #065f46 (forest)
+  · Pets → playful warm: #f59e0b, #fb923c, #10b981
+  Pick a rich, saturated hex that a professional app designer would be proud of.
+- KAAFI_SLOT_ACCENT_COLOR: A color that harmonizes — either analogous (nearby on color wheel) or complementary
+
+TEXT & UX COPY
+- KAAFI_SLOT_LOGIN_TAGLINE: Warm, brand-voice welcome. NOT "Sign in to continue". E.g. "Your walks, simplified." or "Good food, faster."
+- KAAFI_SLOT_SIGNUP_TAGLINE: Excitement-building. E.g. "Join 10,000+ happy customers." or "Get started in 30 seconds."
+- KAAFI_SLOT_GREETING: Warm, time-aware. Options: "Good morning", "Hey there", "Welcome back", "Ready to go?"
+- KAAFI_SLOT_HEADER_TITLE: The bold statement at the top of the home screen. NOT the app name. E.g. "What's for dinner?", "Today's walks", "Track your spend"
+- KAAFI_SLOT_SEARCH_PLACEHOLDER: Contextual and specific. NOT "Search...". E.g. "Search restaurants near you", "Find a dog walker", "Search expenses..."
+
+NAVIGATION
+- KAAFI_SLOT_TAB1_LABEL, TAB1_ICON: Primary tab name + Ionicons icon (e.g. home-outline, storefront-outline, map-outline)
+- KAAFI_SLOT_TAB2_LABEL, TAB2_ICON: Discovery tab + icon (e.g. search-outline, compass-outline, grid-outline)
+- KAAFI_SLOT_EXPLORE_SUBTITLE: 1 line below the explore header. E.g. "Find top-rated walkers in your area"
+- KAAFI_SLOT_EXPLORE_EMPTY_STATE: Friendly, helpful empty state message. E.g. "No results yet — try a different search"
+
+CATEGORIES (KAAFI_SLOT_CAT1–CAT4)
+- 4 short, specific category labels relevant to THIS exact app. NOT "All, Popular, New, Featured".
+  E.g. for a food app: "Breakfast", "Lunch", "Dinner", "Snacks"
+  E.g. for a services app: "Cleaning", "Plumbing", "Electrical", "Moving"
+
+PROFILE
+- KAAFI_SLOT_PROFILE_NAME: A realistic first + last name (appropriate for the target market)
+- KAAFI_SLOT_PROFILE_META: Something contextual, e.g. "Member since March 2024", "Gold Member · 47 orders"
+- KAAFI_SLOT_MENU1/2/3 + MENU1_ICON/MENU2_ICON/MENU3_ICON: 3 profile menu items that make sense for this app
+  (e.g. "My Orders" / receipt-outline, "Saved Addresses" / location-outline, "Payment Methods" / card-outline)
+
+SAMPLE DATA — MOST IMPORTANT. Make it ultra-realistic for this specific app.
+- KAAFI_SLOT_ITEM1 through ITEM5 each have: _TITLE, _SUBTITLE, _EMOJI, _META
+- _TITLE: A specific, real-world item name. NOT "Item 1" or "Sample Product".
+  For expense tracker: "Whole Foods Run", "Netflix · Spotify", "Electricity Bill"
+  For dog walkers: "Bruno's Morning Walk", "Bella's Park Run", "Max's Afternoon Stroll"
+  For restaurant: "Chicken Tikka Masala", "Veg Hakka Noodles", "Butter Garlic Prawns"
+- _SUBTITLE: Descriptive, specific context for this item
+- _EMOJI: The most fitting single emoji for the item
+- _META: Key metric shown on the card (price, rating, time, distance — whatever makes sense)
+
+- KAAFI_SLOT_FEED_TITLE: Section heading on the home screen. E.g. "Popular near you", "Recent transactions", "Today's specials"
+- KAAFI_SLOT_FEED_ITEM_TYPE: What each card represents (e.g. "restaurant", "walker", "expense", "product")
+- KAAFI_SLOT_CTA_LABEL: The button inside each card. 1–2 words. E.g. "Book", "Order", "View", "Hire", "Track"
+
+Return ONLY the JSON object. Make every value feel like it came from a real, live app.`;
+}
+
+// ── Design enhancement pass ───────────────────────────────
+// Takes a completed main screen and makes it visually polished
+async function enhanceMainScreen(
+  fileContent: string,
+): Promise<string> {
+  try {
+    const response = await client.messages.create({
+      model: "claude-sonnet-4-6",
+      max_tokens: 6000,
+      system: DESIGN_SYSTEM_PROMPT,
+      messages: [{
+        role: "user",
+        content: `Improve this React Native screen's visual design. Keep all logic and data intact:\n\n${fileContent}`,
+      }],
+    });
+    const improved = response.content[0].type === "text" ? response.content[0].text.trim() : "";
+    // Only use the improvement if it looks like valid React Native code
+    if (improved.includes("import") && improved.includes("export default") && improved.length > 200) {
+      return improved;
+    }
+    return fileContent; // fallback to original if AI output looks wrong
+  } catch {
+    return fileContent; // never fail the whole generation because of a design pass
+  }
 }
 
 export async function POST(req: NextRequest) {
@@ -222,10 +330,34 @@ export async function POST(req: NextRequest) {
     }
 
     // Apply slots to every scaffold file programmatically
-    const patches = Object.entries(scaffold).map(([path, template]) => ({
+    let patches = Object.entries(scaffold).map(([path, template]) => ({
       path,
       content: applySlots(template, slotValues),
     }));
+
+    // Design enhancement pass — run in parallel on all key screens
+    const SCREENS_TO_ENHANCE = [
+      "app/(tabs)/index.tsx",    // main home screen
+      "app/(tabs)/profile.tsx",  // profile tab
+      "app/(auth)/login.tsx",    // first screen users see
+    ];
+
+    const enhancementResults = await Promise.all(
+      SCREENS_TO_ENHANCE.map(async (screenPath) => {
+        const idx = patches.findIndex((p) => p.path === screenPath);
+        if (idx === -1) return null;
+        const enhanced = await enhanceMainScreen(patches[idx].content);
+        return { path: screenPath, content: enhanced };
+      })
+    );
+
+    // Apply all enhanced screens back into patches
+    for (const result of enhancementResults) {
+      if (!result) continue;
+      patches = patches.map((p) =>
+        p.path === result.path ? { ...p, content: result.content } : p
+      );
+    }
 
     // Save files
     await supabase.from("project_files").insert(
