@@ -4,59 +4,53 @@ import { logAICost } from "@/lib/logAICost";
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
-const SYSTEM_PROMPT = `You are Kaafi's app planning assistant. Your job is to deeply understand what mobile app someone wants to build by generating targeted multiple-choice questions. Be specific, clever, and relevant to the exact app idea — never generic.
+const SYSTEM_PROMPT = `You are Kaafi's app planning assistant. Generate targeted multiple-choice questions for a mobile app idea.
 
-Return ONLY a valid JSON object. No markdown, no explanation, no code fences. Just the raw JSON.`;
+CRITICAL: Return ONLY raw JSON. No markdown, no code fences, no explanation. Start your response with { and end with }`;
 
 const USER_PROMPT = (idea: string) => `
 The user wants to build: "${idea}"
 
-Generate exactly 18 multiple-choice questions that will reveal everything needed to build this app.
-Cover these areas (in roughly this order, but adapt to the app type):
-1. Target audience — who are the primary users?
-2. Visual vibe / aesthetic — what feeling should the app have?
-3. Color personality — warm/cool/neutral/bold?
-4. Navigation style — how users move through the app
-5. Sign-in method — how users authenticate
-6. #1 core feature — the single most important capability
-7. #2 core feature — the second most important thing
-8. Content source — who creates or provides the content?
-9. Social features — how users interact with each other
-10. Search & discovery — how users find things
-11. Notifications — what should the app ping users about?
-12. Monetisation model — how does this app make money?
-13. Pricing (if paid) — what does it cost users?
-14. Offline mode — does it work without internet?
-15. Device features — camera, GPS, microphone, etc.?
-16. Data sensitivity — how private is user data?
-17. Geographic target — local, national, or global?
-18. First screen after login — what does the user see first?
+Generate exactly 18 multiple-choice questions covering:
+1. Target audience, 2. Visual vibe, 3. Color personality, 4. Navigation style,
+5. Sign-in method, 6. Core feature #1, 7. Core feature #2, 8. Content source,
+9. Social features, 10. Search & discovery, 11. Notifications, 12. Monetisation,
+13. Pricing, 14. Offline mode, 15. Device features, 16. Data sensitivity,
+17. Geographic target, 18. First screen after login
 
-Return this exact JSON shape:
-{
-  "questions": [
-    {
-      "id": "q1",
-      "category": "audience",
-      "question": "...",
-      "options": [
-        { "id": "a", "icon": "🧑", "label": "Short Label", "description": "One sentence, under 10 words." },
-        { "id": "b", "icon": "👩", "label": "Short Label", "description": "One sentence, under 10 words." },
-        { "id": "c", "icon": "👴", "label": "Short Label", "description": "One sentence, under 10 words." },
-        { "id": "d", "icon": "🏢", "label": "Short Label", "description": "One sentence, under 10 words." }
-      ]
-    }
-  ]
-}
+Return this exact JSON shape (start with { immediately, no preamble):
+{"questions":[{"id":"q1","category":"audience","question":"...","options":[{"id":"a","icon":"🧑","label":"Short Label","description":"One sentence, max 8 words."},{"id":"b","icon":"👩","label":"Short Label","description":"One sentence, max 8 words."},{"id":"c","icon":"👴","label":"Short Label","description":"One sentence, max 8 words."}]}]}
 
 Rules:
-- Every question and every option MUST reference the specific app idea, not be generic.
-- Each question has exactly 3 or 4 options (use 3 when 4 would be redundant).
-- Icons: single emoji only.
-- Labels: 2–4 words max.
-- Descriptions: 1 sentence, ≤10 words.
-- Return ONLY the JSON. No markdown. No extra text.
+- Every question must be specific to "${idea}", never generic
+- 3-4 options per question
+- Icons: single emoji only
+- Labels: 2-4 words max
+- Descriptions: max 8 words (SHORT — prevents token overflow)
+- Return ONLY the JSON object, nothing else
 `;
+
+function extractAndParseJSON(raw: string): { questions: unknown[] } {
+  // Try 1: parse as-is (clean response)
+  try {
+    return JSON.parse(raw.trim());
+  } catch { /* try next */ }
+
+  // Try 2: strip markdown fences then parse
+  try {
+    const stripped = raw.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "").trim();
+    return JSON.parse(stripped);
+  } catch { /* try next */ }
+
+  // Try 3: find outermost { } and parse that slice
+  const start = raw.indexOf("{");
+  const end = raw.lastIndexOf("}");
+  if (start !== -1 && end !== -1 && end > start) {
+    return JSON.parse(raw.slice(start, end + 1));
+  }
+
+  throw new Error("Could not extract valid JSON from AI response");
+}
 
 export async function POST(req: NextRequest) {
   try {
@@ -66,22 +60,45 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "App idea is required." }, { status: 400 });
     }
 
-    const message = await client.messages.create({
-      model: "claude-haiku-4-5-20251001",
-      max_tokens: 8192,
-      system: SYSTEM_PROMPT,
-      messages: [{ role: "user", content: USER_PROMPT(idea.trim()) }],
-    });
+    const ideaTrimmed = idea.trim();
 
-    const raw = message.content[0].type === "text" ? message.content[0].text : "";
+    async function attempt(isRetry: boolean) {
+      const systemMsg = isRetry
+        ? `${SYSTEM_PROMPT}\n\nPREVIOUS ATTEMPT FAILED: your JSON was malformed. This time, be extra careful with JSON syntax. Keep descriptions very short (5 words max) to avoid any issues.`
+        : SYSTEM_PROMPT;
 
-    // Strip any accidental markdown fences
-    const cleaned = raw.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "").trim();
+      return client.messages.create({
+        model: "claude-haiku-4-5-20251001",
+        max_tokens: 6000, // reduced to avoid truncation
+        system: systemMsg,
+        messages: [{ role: "user", content: USER_PROMPT(ideaTrimmed) }],
+      });
+    }
 
-    const parsed = JSON.parse(cleaned);
+    let message;
+    let parsed: { questions: unknown[] };
+
+    try {
+      message = await attempt(false);
+      const raw = message.content[0].type === "text" ? message.content[0].text : "";
+      parsed = extractAndParseJSON(raw);
+    } catch (firstErr) {
+      console.warn("[/api/ai/mcq] Attempt 1 failed:", firstErr instanceof Error ? firstErr.message : firstErr);
+      try {
+        message = await attempt(true);
+        const raw = message.content[0].type === "text" ? message.content[0].text : "";
+        parsed = extractAndParseJSON(raw);
+      } catch (secondErr) {
+        console.error("[/api/ai/mcq] Both attempts failed:", secondErr instanceof Error ? secondErr.message : secondErr);
+        return NextResponse.json(
+          { error: "Failed to generate questions. Please try again." },
+          { status: 500 }
+        );
+      }
+    }
 
     if (!Array.isArray(parsed.questions) || parsed.questions.length === 0) {
-      throw new Error("Invalid questions structure from AI");
+      return NextResponse.json({ error: "No questions generated. Please try again." }, { status: 500 });
     }
 
     logAICost({
@@ -95,6 +112,6 @@ export async function POST(req: NextRequest) {
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     console.error("[/api/ai/mcq]", msg);
-    return NextResponse.json({ error: msg }, { status: 500 });
+    return NextResponse.json({ error: "Failed to generate questions. Please try again." }, { status: 500 });
   }
 }
