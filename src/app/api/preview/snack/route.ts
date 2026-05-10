@@ -38,18 +38,23 @@ export async function POST(req: NextRequest) {
     // Generate Snack-compatible App.js
     const appCode = generateSnackCode(previewData);
 
-    // Call Expo Snack API
+    // Call Expo Snack API — format: manifest + code (not files)
     const snackRes = await fetch(SNACK_API, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        "Expo-Platform": "web",
+      },
       body: JSON.stringify({
-        name: project.name,
-        description: `Built with Kaafi — kaafi.app`,
-        files: {
+        manifest: {
+          name: project.name.slice(0, 50),
+          description: "Built with Kaafi",
+          sdkVersion: "52.0.0",
+          dependencies: SNACK_DEPENDENCIES,
+        },
+        code: {
           "App.js": { type: "CODE", contents: appCode },
         },
-        dependencies: SNACK_DEPENDENCIES,
-        sdkVersion: "51.0.0",
       }),
     });
 
