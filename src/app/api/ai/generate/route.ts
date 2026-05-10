@@ -5,7 +5,11 @@ import { SCAFFOLDS, selectTemplate } from "@/lib/scaffolds/selector";
 import { logAICost } from "@/lib/logAICost";
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
-const CREDIT_COST = 3;
+
+const STANDARD_MODEL = "claude-sonnet-4-6";
+const PREMIUM_MODEL  = "claude-opus-4-7";
+const STANDARD_COST  = 3;
+const PREMIUM_COST   = 5;
 
 // Extract every unique KAAFI_SLOT_* name from all scaffold files
 function extractSlots(scaffold: Record<string, string>): string[] {
@@ -88,19 +92,24 @@ export async function POST(req: NextRequest) {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
+    // Parse body first so we know premium flag before checking credits
+    const { idea, answers, questions, premium = false } = await req.json();
+    if (!idea || !answers) {
+      return NextResponse.json({ error: "Missing idea or answers." }, { status: 400 });
+    }
+
+    const model       = premium ? PREMIUM_MODEL : STANDARD_MODEL;
+    const creditCost  = premium ? PREMIUM_COST  : STANDARD_COST;
+    const maxTokens   = premium ? 4096 : 2048;
+
     const { data: profile } = await supabase
       .from("profiles")
       .select("credits_balance, plan")
       .eq("id", user.id)
       .single();
 
-    if (!profile || profile.credits_balance < CREDIT_COST) {
+    if (!profile || profile.credits_balance < creditCost) {
       return NextResponse.json({ error: "Not enough credits. Please top up." }, { status: 402 });
-    }
-
-    const { idea, answers, questions } = await req.json();
-    if (!idea || !answers) {
-      return NextResponse.json({ error: "Missing idea or answers." }, { status: 400 });
     }
 
     // Resolve answer IDs → label text so the keyword selector works correctly
@@ -121,12 +130,12 @@ export async function POST(req: NextRequest) {
     // Deduct credits
     await supabase
       .from("profiles")
-      .update({ credits_balance: profile.credits_balance - CREDIT_COST })
+      .update({ credits_balance: profile.credits_balance - creditCost })
       .eq("id", user.id);
 
     await supabase.from("credit_transactions").insert({
       user_id: user.id,
-      delta: -CREDIT_COST,
+      delta: -creditCost,
       reason: "App generation",
     });
 
@@ -158,8 +167,8 @@ export async function POST(req: NextRequest) {
         : SYSTEM_PROMPT;
 
       const message = await client.messages.create({
-        model: "claude-sonnet-4-6",
-        max_tokens: 2048,
+        model,
+        max_tokens: maxTokens,
         system: systemMsg,
         messages: [{ role: "user", content: prompt }],
       });
@@ -168,7 +177,7 @@ export async function POST(req: NextRequest) {
       const cleaned = raw.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "").trim();
       logAICost({
         userId: user?.id,
-        model: "claude-sonnet-4-6",
+        model,
         action: "generate",
         inputTokens: message.usage.input_tokens,
         outputTokens: message.usage.output_tokens,
@@ -195,7 +204,7 @@ export async function POST(req: NextRequest) {
 
         await supabase.from("credit_transactions").insert({
           user_id: user.id,
-          delta: CREDIT_COST,
+          delta: creditCost,
           reason: "Generation failed — credits refunded",
           project_id: project.id,
         });
