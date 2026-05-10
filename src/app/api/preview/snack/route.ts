@@ -50,11 +50,11 @@ export async function POST(req: NextRequest) {
           name: project.name.slice(0, 50),
           description: "Built with Kaafi",
           sdkVersion: "52.0.0",
-          dependencies: SNACK_DEPENDENCIES,
         },
         code: {
           "App.js": { type: "CODE", contents: appCode },
         },
+        dependencies: SNACK_DEPENDENCIES,
       }),
     });
 
