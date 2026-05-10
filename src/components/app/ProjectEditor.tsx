@@ -8,6 +8,7 @@ import { useToast } from "@/components/ui/Toast";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import DynamicPreview from "@/components/app/DynamicPreview";
 import DiffViewer from "@/components/app/DiffViewer";
+import UpgradeModal from "@/components/app/UpgradeModal";
 import { buildDiffs } from "@/lib/diff/patch";
 import { parsePreviewData } from "@/lib/preview-parser";
 import { useRouter } from "next/navigation";
@@ -171,6 +172,7 @@ export default function ProjectEditor({
   const [pendingReply, setPendingReply] = useState("");
   const [pendingCreditCost] = useState(1);
   const [visualEditMode, setVisualEditMode] = useState(false);
+  const [upgradeModal, setUpgradeModal] = useState<{ feature: string; requiredPlan: "builder" | "studio" } | null>(null);
 
   // Derive preview data live from files state so it updates after every edit
   const livePreviewData = useMemo(
@@ -407,6 +409,10 @@ export default function ProjectEditor({
   };
 
   const handleExport = async () => {
+    if (userPlan === "hobby") {
+      setUpgradeModal({ feature: "Export ZIP", requiredPlan: "builder" });
+      return;
+    }
     setExporting(true);
     try {
       const res = await fetch("/api/export", {
@@ -436,7 +442,7 @@ export default function ProjectEditor({
 
   const handleBuild = async () => {
     if (userPlan !== "studio") {
-      toast.warning("Studio required", "Cloud builds are only available on the Studio plan.");
+      setUpgradeModal({ feature: "Build APK", requiredPlan: "studio" });
       return;
     }
     setBuilding(true);
@@ -861,6 +867,16 @@ export default function ProjectEditor({
           onConfirm={handleDelete}
           onCancel={() => setShowDeleteConfirm(false)}
         />
+
+        {/* Upgrade modal — shown when user tries a gated feature */}
+        {upgradeModal && (
+          <UpgradeModal
+            feature={upgradeModal.feature}
+            requiredPlan={upgradeModal.requiredPlan}
+            onClose={() => setUpgradeModal(null)}
+            onSuccess={() => setUpgradeModal(null)}
+          />
+        )}
 
         {/* Diff viewer — shown after AI responds, before credits are spent */}
         {pendingPatches && pendingPatches.length > 0 && (
