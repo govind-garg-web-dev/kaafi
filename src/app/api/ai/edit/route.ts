@@ -16,39 +16,24 @@ Output format (return ONLY this JSON, no markdown):
   "reply": "Done! I changed X and Y."
 }`;
 
-const CREDIT_COST = 1;
-
 export async function POST(req: NextRequest) {
   try {
     const supabase = await createClient();
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-    const { projectId, message, files } = await req.json();
+    const { message, files } = await req.json();
 
-    // Check credits
+    // Check credits upfront so the user gets a clear error before the AI call
     const { data: profile } = await supabase
       .from("profiles")
       .select("credits_balance")
       .eq("id", user.id)
       .single();
 
-    if (!profile || profile.credits_balance < CREDIT_COST) {
+    if (!profile || profile.credits_balance < 1) {
       return NextResponse.json({ error: "Insufficient credits." }, { status: 402 });
     }
-
-    // Deduct
-    await supabase
-      .from("profiles")
-      .update({ credits_balance: profile.credits_balance - CREDIT_COST })
-      .eq("id", user.id);
-
-    await supabase.from("credit_transactions").insert({
-      user_id: user.id,
-      delta: -CREDIT_COST,
-      reason: `Edit: ${message.slice(0, 80)}`,
-      project_id: projectId,
-    });
 
     const filesContext = (files as { path: string; content: string }[])
       .map((f) => `### ${f.path}\n${f.content}`)
@@ -68,16 +53,8 @@ export async function POST(req: NextRequest) {
     const cleaned = raw.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "").trim();
     const { patches, reply } = JSON.parse(cleaned);
 
-    // Save updated files
-    if (Array.isArray(patches)) {
-      for (const patch of patches) {
-        await supabase
-          .from("project_files")
-          .upsert({ project_id: projectId, path: patch.path, content: patch.content });
-      }
-    }
-
-    return NextResponse.json({ reply: reply ?? "Changes applied." });
+    // Return patches for the client to show in DiffViewer — no credits deducted yet, no DB writes yet
+    return NextResponse.json({ patches: patches ?? [], reply: reply ?? "Changes ready to apply." });
   } catch (err) {
     console.error("[/api/ai/edit]", err);
     return NextResponse.json({ error: "Edit failed." }, { status: 500 });

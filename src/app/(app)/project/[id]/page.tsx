@@ -1,7 +1,6 @@
 import { notFound, redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import ProjectEditor from "@/components/app/ProjectEditor";
-import { parsePreviewData } from "@/lib/preview-parser";
 
 export default async function ProjectPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -29,17 +28,10 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
     .eq("id", user.id)
     .single();
 
-  const fileList = files ?? [];
-  const previewData = parsePreviewData(
-    fileList.map((f) => ({ path: f.path, content: f.content })),
-    project.scaffold_type ?? "auth-feed"
-  );
-
   return (
     <ProjectEditor
       project={project}
-      files={fileList}
-      previewData={previewData}
+      files={files ?? []}
       userPlan={profile?.plan ?? "hobby"}
     />
   );

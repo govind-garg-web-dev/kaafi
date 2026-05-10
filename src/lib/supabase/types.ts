@@ -84,6 +84,18 @@ export type Database = {
           project_id?: string | null;
         };
       };
+      project_snapshots: {
+        Row: {
+          id: string;
+          project_id: string;
+          files: { path: string; content: string }[];
+          created_at: string;
+        };
+        Insert: {
+          project_id: string;
+          files: { path: string; content: string }[];
+        };
+      };
     };
   };
 };

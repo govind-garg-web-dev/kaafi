@@ -1,8 +1,97 @@
 "use client";
 
+import { useRef } from "react";
 import type { PreviewData } from "@/lib/preview-parser";
 
-// Shared mini status bar
+// ── Editable text node ───────────────────────────────────
+function EditableText({
+  value,
+  field,
+  editMode,
+  onEdit,
+  style,
+}: {
+  value: string;
+  field: string;
+  editMode: boolean;
+  onEdit: (field: string, oldValue: string, newValue: string) => void;
+  style?: React.CSSProperties;
+}) {
+  const ref = useRef<HTMLSpanElement>(null);
+
+  if (!editMode) {
+    return <span style={style}>{value}</span>;
+  }
+
+  return (
+    <span
+      ref={ref}
+      contentEditable
+      suppressContentEditableWarning
+      onFocus={(e) => {
+        // Select all text on focus for easy replacement
+        const range = document.createRange();
+        range.selectNodeContents(e.currentTarget);
+        window.getSelection()?.removeAllRanges();
+        window.getSelection()?.addRange(range);
+      }}
+      onBlur={(e) => {
+        const newValue = e.currentTarget.textContent ?? value;
+        if (newValue !== value) onEdit(field, value, newValue);
+      }}
+      onKeyDown={(e) => {
+        if (e.key === "Enter") { e.preventDefault(); e.currentTarget.blur(); }
+      }}
+      style={{
+        ...style,
+        outline: "1.5px dashed rgba(124,92,252,0.6)",
+        borderRadius: 3,
+        minWidth: 20,
+        cursor: "text",
+        padding: "0 2px",
+      }}
+    >
+      {value}
+    </span>
+  );
+}
+
+// ── Color swatch overlay (only visible in edit mode) ─────
+function ColorSwatch({
+  color,
+  editMode,
+  onEdit,
+}: {
+  color: string;
+  editMode: boolean;
+  onEdit: (field: string, oldValue: string, newValue: string) => void;
+}) {
+  if (!editMode) return null;
+  return (
+    <div style={{ position: "absolute", top: 8, right: 8, zIndex: 20 }}>
+      <label title="Change primary colour" style={{ cursor: "pointer", display: "block" }}>
+        <div
+          style={{
+            width: 22,
+            height: 22,
+            borderRadius: "50%",
+            background: color,
+            border: "2px solid white",
+            boxShadow: "0 1px 4px rgba(0,0,0,0.3)",
+          }}
+        />
+        <input
+          type="color"
+          defaultValue={color}
+          style={{ position: "absolute", opacity: 0, width: 0, height: 0, pointerEvents: "none" }}
+          onChange={(e) => onEdit("primaryColor", color, e.target.value)}
+        />
+      </label>
+    </div>
+  );
+}
+
+// ── Shared mini status bar ───────────────────────────────
 function StatusBar() {
   return (
     <div className="flex items-center justify-between px-4 pt-2 pb-1 flex-shrink-0">
@@ -17,11 +106,10 @@ function StatusBar() {
   );
 }
 
-// Shared bottom tab bar
+// ── Shared bottom tab bar ────────────────────────────────
 function TabBar({ tabs, primary }: { tabs: { label: string; icon: string; active?: boolean }[]; primary: string }) {
   return (
-    <div style={{ borderTop: "1px solid #f1f5f9", background: "white", paddingBottom: 8, paddingTop: 6 }}
-      className="flex-shrink-0">
+    <div style={{ borderTop: "1px solid #f1f5f9", background: "white", paddingBottom: 8, paddingTop: 6 }} className="flex-shrink-0">
       <div className="flex">
         {tabs.map((tab) => (
           <div key={tab.label} className="flex-1 flex flex-col items-center gap-0.5 py-1">
@@ -36,17 +124,25 @@ function TabBar({ tabs, primary }: { tabs: { label: string; icon: string; active
   );
 }
 
+type EditProps = {
+  editMode: boolean;
+  onEdit: (field: string, oldValue: string, newValue: string) => void;
+};
+
 // ── Feed preview ─────────────────────────────────────────
-function FeedPreview({ data }: { data: PreviewData }) {
+function FeedPreview({ data, editMode, onEdit }: { data: PreviewData } & EditProps) {
   const { primaryColor: p, items, headerTitle, searchPlaceholder, appName, ctaLabel } = data;
   return (
-    <div className="flex flex-col h-full bg-gray-50 overflow-hidden">
+    <div className="flex flex-col h-full bg-gray-50 overflow-hidden" style={{ position: "relative" }}>
+      <ColorSwatch color={p} editMode={editMode} onEdit={onEdit} />
       <StatusBar />
       <div style={{ background: "white", padding: "8px 14px 10px", borderBottom: "1px solid #f1f5f9" }}>
-        <div style={{ fontSize: 17, fontWeight: 700, color: "#111827", marginBottom: 6 }}>{headerTitle || appName}</div>
+        <div style={{ fontSize: 17, fontWeight: 700, color: "#111827", marginBottom: 6 }}>
+          <EditableText value={headerTitle || appName} field="headerTitle" editMode={editMode} onEdit={onEdit} />
+        </div>
         <div style={{ background: "#f3f4f6", borderRadius: 10, padding: "6px 10px", display: "flex", alignItems: "center", gap: 6 }}>
           <span style={{ fontSize: 12, color: "#9ca3af" }}>🔍</span>
-          <span style={{ fontSize: 11, color: "#9ca3af" }}>{searchPlaceholder}</span>
+          <EditableText value={searchPlaceholder} field="searchPlaceholder" editMode={editMode} onEdit={onEdit} style={{ fontSize: 11, color: "#9ca3af" }} />
         </div>
       </div>
       <div className="flex-1 overflow-hidden px-3 pt-3 flex flex-col gap-2">
@@ -61,7 +157,7 @@ function FeedPreview({ data }: { data: PreviewData }) {
                 <div style={{ fontSize: 10, color: "#6b7280", marginTop: 1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{item.subtitle}</div>
               </div>
               <div style={{ background: p, borderRadius: 8, padding: "4px 8px", flexShrink: 0 }}>
-                <span style={{ fontSize: 10, color: "white", fontWeight: 600 }}>{ctaLabel}</span>
+                <EditableText value={ctaLabel} field="ctaLabel" editMode={editMode} onEdit={onEdit} style={{ fontSize: 10, color: "white", fontWeight: 600 }} />
               </div>
             </div>
           </div>
@@ -73,32 +169,27 @@ function FeedPreview({ data }: { data: PreviewData }) {
 }
 
 // ── Map preview ──────────────────────────────────────────
-function MapPreview({ data }: { data: PreviewData }) {
+function MapPreview({ data, editMode, onEdit }: { data: PreviewData } & EditProps) {
   const { primaryColor: p, items, headerTitle, appName, ctaLabel } = data;
   return (
-    <div className="flex flex-col h-full bg-gray-50 overflow-hidden">
+    <div className="flex flex-col h-full bg-gray-50 overflow-hidden" style={{ position: "relative" }}>
+      <ColorSwatch color={p} editMode={editMode} onEdit={onEdit} />
       <StatusBar />
       <div style={{ background: "white", padding: "8px 14px 10px", borderBottom: "1px solid #f1f5f9" }}>
-        <div style={{ fontSize: 17, fontWeight: 700, color: "#111827" }}>{headerTitle || appName}</div>
+        <div style={{ fontSize: 17, fontWeight: 700, color: "#111827" }}>
+          <EditableText value={headerTitle || appName} field="headerTitle" editMode={editMode} onEdit={onEdit} />
+        </div>
         <div style={{ fontSize: 11, color: "#9ca3af", marginTop: 2 }}>Near your location</div>
       </div>
-      {/* Map area */}
       <div style={{ height: 140, background: "linear-gradient(135deg, #e0f2fe, #bae6fd)", position: "relative", flexShrink: 0 }}>
         <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", flexDirection: "column", gap: 4 }}>
           <span style={{ fontSize: 24 }}>🗺️</span>
           <span style={{ fontSize: 10, color: "#6b7280" }}>Tap to explore nearby</span>
         </div>
         {items.slice(0, 3).map((item, i) => (
-          <div key={item.id} style={{
-            position: "absolute", width: 28, height: 28, borderRadius: "50%",
-            background: i === 0 ? p : "white",
-            border: `2px solid ${p}`,
-            display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13,
-            top: 30 + i * 35, left: 40 + i * 55, boxShadow: "0 2px 8px rgba(0,0,0,0.2)",
-          }}>{item.emoji}</div>
+          <div key={item.id} style={{ position: "absolute", width: 28, height: 28, borderRadius: "50%", background: i === 0 ? p : "white", border: `2px solid ${p}`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, top: 30 + i * 35, left: 40 + i * 55, boxShadow: "0 2px 8px rgba(0,0,0,0.2)" }}>{item.emoji}</div>
         ))}
       </div>
-      {/* Nearby list */}
       <div className="flex-1 overflow-hidden px-3 pt-3 flex flex-col gap-2">
         <div style={{ fontSize: 12, fontWeight: 600, color: "#374151", marginBottom: 2 }}>Nearby</div>
         {items.slice(0, 2).map((item) => (
@@ -109,7 +200,7 @@ function MapPreview({ data }: { data: PreviewData }) {
               <div style={{ fontSize: 10, color: "#9ca3af" }}>📍 {item.meta}</div>
             </div>
             <div style={{ background: p, borderRadius: 7, padding: "3px 7px" }}>
-              <span style={{ fontSize: 10, color: "white", fontWeight: 600 }}>{ctaLabel}</span>
+              <EditableText value={ctaLabel} field="ctaLabel" editMode={editMode} onEdit={onEdit} style={{ fontSize: 10, color: "white", fontWeight: 600 }} />
             </div>
           </div>
         ))}
@@ -120,29 +211,30 @@ function MapPreview({ data }: { data: PreviewData }) {
 }
 
 // ── Booking preview ──────────────────────────────────────
-function BookingPreview({ data }: { data: PreviewData }) {
+function BookingPreview({ data, editMode, onEdit }: { data: PreviewData } & EditProps) {
   const { primaryColor: p, items, headerTitle, appName, ctaLabel } = data;
   return (
-    <div className="flex flex-col h-full bg-gray-50 overflow-hidden">
+    <div className="flex flex-col h-full bg-gray-50 overflow-hidden" style={{ position: "relative" }}>
+      <ColorSwatch color={p} editMode={editMode} onEdit={onEdit} />
       <StatusBar />
       <div style={{ background: "white", padding: "8px 14px 12px", borderBottom: "1px solid #f1f5f9" }}>
-        <div style={{ fontSize: 17, fontWeight: 700, color: "#111827" }}>{headerTitle || appName}</div>
+        <div style={{ fontSize: 17, fontWeight: 700, color: "#111827" }}>
+          <EditableText value={headerTitle || appName} field="headerTitle" editMode={editMode} onEdit={onEdit} />
+        </div>
         <div style={{ fontSize: 11, color: "#9ca3af", marginTop: 2 }}>Book your appointment</div>
       </div>
       <div className="flex-1 overflow-hidden px-3 pt-3 flex flex-col gap-2.5">
         {items.slice(0, 3).map((item) => (
           <div key={item.id} style={{ background: "white", borderRadius: 14, padding: "12px", border: "1px solid #f1f5f9", boxShadow: "0 1px 3px rgba(0,0,0,0.06)" }}>
             <div className="flex items-start gap-2.5">
-              <div style={{ width: 42, height: 42, borderRadius: 12, background: p + "15", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20, flexShrink: 0 }}>
-                {item.emoji}
-              </div>
+              <div style={{ width: 42, height: 42, borderRadius: 12, background: p + "15", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20, flexShrink: 0 }}>{item.emoji}</div>
               <div className="flex-1 min-w-0">
                 <div style={{ fontSize: 12, fontWeight: 700, color: "#111827" }}>{item.title}</div>
                 <div style={{ fontSize: 10, color: "#6b7280", marginTop: 1 }}>{item.subtitle}</div>
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 8 }}>
                   <span style={{ fontSize: 11, fontWeight: 700, color: p }}>{item.meta}</span>
                   <div style={{ background: p, borderRadius: 8, padding: "4px 10px" }}>
-                    <span style={{ fontSize: 10, color: "white", fontWeight: 600 }}>{ctaLabel}</span>
+                    <EditableText value={ctaLabel} field="ctaLabel" editMode={editMode} onEdit={onEdit} style={{ fontSize: 10, color: "white", fontWeight: 600 }} />
                   </div>
                 </div>
               </div>
@@ -156,28 +248,29 @@ function BookingPreview({ data }: { data: PreviewData }) {
 }
 
 // ── eCommerce preview ────────────────────────────────────
-function EcommercePreview({ data }: { data: PreviewData }) {
+function EcommercePreview({ data, editMode, onEdit }: { data: PreviewData } & EditProps) {
   const { primaryColor: p, items, headerTitle, appName, searchPlaceholder } = data;
   return (
-    <div className="flex flex-col h-full bg-gray-50 overflow-hidden">
+    <div className="flex flex-col h-full bg-gray-50 overflow-hidden" style={{ position: "relative" }}>
+      <ColorSwatch color={p} editMode={editMode} onEdit={onEdit} />
       <StatusBar />
       <div style={{ background: "white", padding: "8px 14px 10px", borderBottom: "1px solid #f1f5f9" }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-          <div style={{ fontSize: 17, fontWeight: 700, color: "#111827" }}>{headerTitle || appName}</div>
+          <div style={{ fontSize: 17, fontWeight: 700, color: "#111827" }}>
+            <EditableText value={headerTitle || appName} field="headerTitle" editMode={editMode} onEdit={onEdit} />
+          </div>
           <div style={{ fontSize: 20 }}>🛒</div>
         </div>
         <div style={{ background: "#f3f4f6", borderRadius: 10, padding: "6px 10px", display: "flex", alignItems: "center", gap: 6, marginTop: 8 }}>
           <span style={{ fontSize: 12, color: "#9ca3af" }}>🔍</span>
-          <span style={{ fontSize: 11, color: "#9ca3af" }}>{searchPlaceholder}</span>
+          <EditableText value={searchPlaceholder} field="searchPlaceholder" editMode={editMode} onEdit={onEdit} style={{ fontSize: 11, color: "#9ca3af" }} />
         </div>
       </div>
       <div className="flex-1 overflow-hidden px-3 pt-3">
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
           {items.slice(0, 4).map((item) => (
             <div key={item.id} style={{ background: "white", borderRadius: 12, border: "1px solid #f1f5f9", overflow: "hidden", boxShadow: "0 1px 3px rgba(0,0,0,0.06)" }}>
-              <div style={{ height: 60, background: p + "12", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 26 }}>
-                {item.emoji}
-              </div>
+              <div style={{ height: 60, background: p + "12", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 26 }}>{item.emoji}</div>
               <div style={{ padding: "8px 8px" }}>
                 <div style={{ fontSize: 11, fontWeight: 600, color: "#111827", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{item.title}</div>
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 5 }}>
@@ -197,20 +290,21 @@ function EcommercePreview({ data }: { data: PreviewData }) {
 }
 
 // ── Chat preview ─────────────────────────────────────────
-function ChatPreview({ data }: { data: PreviewData }) {
+function ChatPreview({ data, editMode, onEdit }: { data: PreviewData } & EditProps) {
   const { primaryColor: p, items, headerTitle, appName } = data;
   return (
-    <div className="flex flex-col h-full bg-white overflow-hidden">
+    <div className="flex flex-col h-full bg-white overflow-hidden" style={{ position: "relative" }}>
+      <ColorSwatch color={p} editMode={editMode} onEdit={onEdit} />
       <StatusBar />
       <div style={{ padding: "8px 14px 10px", borderBottom: "1px solid #f1f5f9" }}>
-        <div style={{ fontSize: 17, fontWeight: 700, color: "#111827" }}>{headerTitle || appName}</div>
+        <div style={{ fontSize: 17, fontWeight: 700, color: "#111827" }}>
+          <EditableText value={headerTitle || appName} field="headerTitle" editMode={editMode} onEdit={onEdit} />
+        </div>
       </div>
       <div className="flex-1 overflow-hidden flex flex-col">
         {items.slice(0, 4).map((item, i) => (
           <div key={item.id} style={{ display: "flex", alignItems: "center", padding: "10px 14px", borderBottom: "1px solid #f9fafb", gap: 10 }}>
-            <div style={{ width: 38, height: 38, borderRadius: "50%", background: p + "20", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18, flexShrink: 0 }}>
-              {item.emoji}
-            </div>
+            <div style={{ width: 38, height: 38, borderRadius: "50%", background: p + "20", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18, flexShrink: 0 }}>{item.emoji}</div>
             <div className="flex-1 min-w-0">
               <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 2 }}>
                 <span style={{ fontSize: 12, fontWeight: 600, color: "#111827" }}>{item.title}</span>
@@ -232,12 +326,21 @@ function ChatPreview({ data }: { data: PreviewData }) {
 }
 
 // ── Router ───────────────────────────────────────────────
-export default function DynamicPreview({ data }: { data: PreviewData }) {
+export default function DynamicPreview({
+  data,
+  editMode = false,
+  onEdit = () => {},
+}: {
+  data: PreviewData;
+  editMode?: boolean;
+  onEdit?: (field: string, oldValue: string, newValue: string) => void;
+}) {
+  const props = { data, editMode, onEdit };
   switch (data.templateType) {
-    case "auth-map":       return <MapPreview data={data} />;
-    case "auth-booking":   return <BookingPreview data={data} />;
-    case "auth-ecommerce": return <EcommercePreview data={data} />;
-    case "auth-chat":      return <ChatPreview data={data} />;
-    default:               return <FeedPreview data={data} />;
+    case "auth-map":       return <MapPreview {...props} />;
+    case "auth-booking":   return <BookingPreview {...props} />;
+    case "auth-ecommerce": return <EcommercePreview {...props} />;
+    case "auth-chat":      return <ChatPreview {...props} />;
+    default:               return <FeedPreview {...props} />;
   }
 }

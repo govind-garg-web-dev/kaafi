@@ -1,13 +1,15 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Send, Download, RotateCcw, Smartphone, Code2, ChevronDown, Loader2, Pencil, Trash2, Check, X, Hammer } from "lucide-react";
+import { Send, Download, RotateCcw, Smartphone, Code2, ChevronDown, Loader2, Pencil, Trash2, Check, X, Hammer, Paintbrush } from "lucide-react";
 import type { Project, ProjectFile } from "@/lib/supabase/types";
 import { useToast } from "@/components/ui/Toast";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import DynamicPreview from "@/components/app/DynamicPreview";
-import type { PreviewData } from "@/lib/preview-parser";
+import DiffViewer from "@/components/app/DiffViewer";
+import { buildDiffs } from "@/lib/diff/patch";
+import { parsePreviewData } from "@/lib/preview-parser";
 import { useRouter } from "next/navigation";
 
 type UserPlan = "hobby" | "builder" | "studio";
@@ -135,15 +137,13 @@ function CodePane({ files }: { files: ProjectFile[] }) {
 export default function ProjectEditor({
   project,
   files: initialFiles,
-  previewData,
   userPlan = "hobby",
 }: {
   project: Project;
   files: ProjectFile[];
-  previewData: PreviewData;
   userPlan?: UserPlan;
 }) {
-  const [files] = useState(initialFiles);
+  const [files, setFiles] = useState(initialFiles);
   const [activeTab, setActiveTab] = useState<"preview" | "code">("preview");
   const [device, setDevice] = useState(DEVICES[0]);
   const [deviceOpen, setDeviceOpen] = useState(false);
@@ -163,6 +163,20 @@ export default function ProjectEditor({
   const [savingName, setSavingName] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [hasSnapshot, setHasSnapshot] = useState(false);
+  const [rollingBack, setRollingBack] = useState(false);
+  const [checkpointVisible, setCheckpointVisible] = useState(false);
+  const checkpointTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [pendingPatches, setPendingPatches] = useState<{ path: string; content: string }[] | null>(null);
+  const [pendingReply, setPendingReply] = useState("");
+  const [pendingCreditCost] = useState(1);
+  const [visualEditMode, setVisualEditMode] = useState(false);
+
+  // Derive preview data live from files state so it updates after every edit
+  const livePreviewData = useMemo(
+    () => parsePreviewData(files.map((f) => ({ path: f.path, content: f.content })), project.scaffold_type),
+    [files, project.scaffold_type]
+  );
   const nameInputRef = useRef<HTMLInputElement>(null);
   const chatEndRef = useRef<HTMLDivElement>(null);
   const toast = useToast();
@@ -238,24 +252,115 @@ export default function ProjectEditor({
     const userMsg = input.trim();
     setInput("");
     setSending(true);
+    setCreditEstimate(null);
     setMessages((m) => [...m, { role: "user", content: userMsg }]);
 
     try {
       const res = await fetch("/api/ai/edit", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ projectId: project.id, message: userMsg, files }),
+        body: JSON.stringify({ message: userMsg, files }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Edit failed");
-      setMessages((m) => [...m, { role: "assistant", content: data.reply ?? "Changes applied." }]);
-      toast.success("Change applied");
+
+      // Show DiffViewer — don't apply or charge yet
+      setPendingPatches(data.patches ?? []);
+      setPendingReply(data.reply ?? "Changes ready to apply.");
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Something went wrong.";
       setMessages((m) => [...m, { role: "assistant", content: msg }]);
       toast.error("Edit failed", msg);
     } finally {
       setSending(false);
+    }
+  };
+
+  const handleApplyEdit = async () => {
+    if (!pendingPatches) return;
+    try {
+      const res = await fetch("/api/ai/edit/confirm", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          projectId: project.id,
+          patches: pendingPatches,
+          currentFiles: files.map((f) => ({ path: f.path, content: f.content })),
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Apply failed");
+
+      // Apply patches to local files state
+      const patchMap = new Map(pendingPatches.map((p) => [p.path, p.content]));
+      setFiles((prev) =>
+        prev.map((f) => patchMap.has(f.path) ? { ...f, content: patchMap.get(f.path)! } : f)
+      );
+
+      // Show checkpoint indicator
+      setHasSnapshot(true);
+      setCheckpointVisible(true);
+      if (checkpointTimer.current) clearTimeout(checkpointTimer.current);
+      checkpointTimer.current = setTimeout(() => setCheckpointVisible(false), 2500);
+
+      setMessages((m) => [...m, { role: "assistant", content: pendingReply }]);
+      setPendingPatches(null);
+      setPendingReply("");
+    } catch (err) {
+      toast.error("Apply failed", err instanceof Error ? err.message : "Try again.");
+    }
+  };
+
+  const handleDiscardEdit = () => {
+    setPendingPatches(null);
+    setPendingReply("");
+    setMessages((m) => [...m, { role: "assistant", content: "Change discarded — no credits spent." }]);
+  };
+
+  const handleVisualEdit = async (field: string, oldValue: string, newValue: string) => {
+    if (!newValue.trim() || newValue === oldValue) return;
+    try {
+      const res = await fetch(`/api/projects/${project.id}/visual-edit`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ field, value: newValue, oldValue }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Visual edit failed");
+
+      // Update the changed file in local state so livePreviewData recalculates
+      setFiles((prev) =>
+        prev.map((f) => f.path === data.path ? { ...f, content: data.content } : f)
+      );
+    } catch (err) {
+      toast.error("Edit failed", err instanceof Error ? err.message : "Try again.");
+    }
+  };
+
+  const handleRollback = async () => {
+    if (rollingBack) return;
+    setRollingBack(true);
+    try {
+      const res = await fetch(`/api/projects/${project.id}/rollback`, { method: "POST" });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Rollback failed");
+
+      // Restore files in local state
+      const restored = data.files as { path: string; content: string }[];
+      setFiles((prev) =>
+        prev.map((f) => {
+          const snap = restored.find((r) => r.path === f.path);
+          return snap ? { ...f, content: snap.content } : f;
+        })
+      );
+
+      setHasSnapshot(data.hasMore === true);
+      setCheckpointVisible(false);
+      toast.success("Rolled back", "Restored to the previous version.");
+    } catch (err) {
+      toast.error("Rollback failed", err instanceof Error ? err.message : "Try again.");
+    } finally {
+      setRollingBack(false);
     }
   };
 
@@ -397,6 +502,30 @@ export default function ProjectEditor({
               </div>
             )}
 
+            {/* Visual Edit toggle — only in preview tab, not when Snack is active */}
+            {activeTab === "preview" && !snackUrl && (
+              <button
+                onClick={() => setVisualEditMode((v) => !v)}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-xl transition-all"
+                style={{
+                  background: visualEditMode ? "rgba(52,211,153,0.12)" : "rgba(255,255,255,0.04)",
+                  border: `1px solid ${visualEditMode ? "rgba(52,211,153,0.3)" : "rgba(255,255,255,0.08)"}`,
+                  color: visualEditMode ? "#34d399" : "#94a3b8",
+                  fontFamily: "var(--font-inter)",
+                }}
+                title="Edit text and colours directly — 0 credits"
+              >
+                <Paintbrush size={12} />
+                {visualEditMode ? "Visual Edit ON" : "Visual Edit"}
+                {visualEditMode && (
+                  <span className="text-[10px] px-1.5 py-0.5 rounded-full ml-0.5"
+                    style={{ background: "rgba(52,211,153,0.15)", color: "#34d399" }}>
+                    0 credits
+                  </span>
+                )}
+              </button>
+            )}
+
             {/* Live preview toggle */}
             <button
               onClick={handleLivePreview}
@@ -468,7 +597,11 @@ export default function ProjectEditor({
               </PhoneBezel>
             ) : (
               <PhoneBezel device={device}>
-                <DynamicPreview data={previewData} />
+                <DynamicPreview
+                  data={livePreviewData}
+                  editMode={visualEditMode}
+                  onEdit={handleVisualEdit}
+                />
               </PhoneBezel>
             )
           ) : (
@@ -520,13 +653,52 @@ export default function ProjectEditor({
               {files.length} files · 1 credit/edit
             </p>
           </div>
-          <button
-            onClick={() => setShowDeleteConfirm(true)}
-            title="Delete project"
-            className="text-[#4a5568] hover:text-red-400 transition-colors p-1.5 rounded-lg hover:bg-red-500/8 flex-shrink-0"
-          >
-            <Trash2 size={14} />
-          </button>
+          <div className="flex items-center gap-1 flex-shrink-0">
+            {/* Checkpoint indicator */}
+            <AnimatePresence>
+              {checkpointVisible && (
+                <motion.span
+                  key="checkpoint"
+                  initial={{ opacity: 0, scale: 0.8 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  exit={{ opacity: 0, scale: 0.8 }}
+                  className="text-[10px] font-medium px-2 py-0.5 rounded-full flex items-center gap-1"
+                  style={{
+                    background: "rgba(52,211,153,0.12)",
+                    color: "#34d399",
+                    border: "1px solid rgba(52,211,153,0.2)",
+                    fontFamily: "var(--font-inter)",
+                  }}
+                >
+                  <Check size={9} />
+                  Checkpoint saved
+                </motion.span>
+              )}
+            </AnimatePresence>
+
+            {/* Rollback button */}
+            {hasSnapshot && (
+              <button
+                onClick={handleRollback}
+                disabled={rollingBack}
+                title="Undo last change — free"
+                className="text-[#4a5568] hover:text-amber-400 transition-colors p-1.5 rounded-lg hover:bg-amber-500/8 disabled:opacity-40"
+              >
+                {rollingBack
+                  ? <Loader2 size={14} className="animate-spin" />
+                  : <RotateCcw size={14} />
+                }
+              </button>
+            )}
+
+            <button
+              onClick={() => setShowDeleteConfirm(true)}
+              title="Delete project"
+              className="text-[#4a5568] hover:text-red-400 transition-colors p-1.5 rounded-lg hover:bg-red-500/8"
+            >
+              <Trash2 size={14} />
+            </button>
+          </div>
         </div>
 
         {/* Build guide modal */}
@@ -583,6 +755,20 @@ export default function ProjectEditor({
           onConfirm={handleDelete}
           onCancel={() => setShowDeleteConfirm(false)}
         />
+
+        {/* Diff viewer — shown after AI responds, before credits are spent */}
+        {pendingPatches && pendingPatches.length > 0 && (
+          <DiffViewer
+            diffs={buildDiffs(
+              files.map((f) => ({ path: f.path, content: f.content })),
+              pendingPatches
+            )}
+            reply={pendingReply}
+            creditCost={pendingCreditCost}
+            onApply={handleApplyEdit}
+            onDiscard={handleDiscardEdit}
+          />
+        )}
 
         {/* Messages */}
         <div className="flex-1 overflow-y-auto p-4 flex flex-col gap-3" style={{ scrollbarWidth: "thin", scrollbarColor: "#2a2a4a transparent" }}>
