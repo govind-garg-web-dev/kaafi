@@ -11,249 +11,23 @@ const PREMIUM_MODEL  = "claude-opus-4-7";
 const STANDARD_COST  = 3;
 const PREMIUM_COST   = 5;
 
-// ── Full app generation (primary approach) ────────────────
-// Claude acts as a senior developer and writes the ENTIRE app from scratch.
-// No templates. No slot-filling. Complete custom code based on all 18 answers.
-
-const FULL_APP_SYSTEM_PROMPT = `You are a senior React Native developer and UI/UX designer at a world-class mobile studio. You are building a complete, production-quality mobile app from scratch.
-
-TECH STACK — use EXACTLY these:
-• Expo SDK ~52.0.0 (managed workflow)
-• TypeScript strict mode throughout
-• Expo Router v4 (file-based routing with route groups)
-• NativeWind v4 (Tailwind via className prop on all RN components)
-• Zustand v5: import { create } from "zustand"
-• Icons: import { Ionicons } from "@expo/vector-icons"
-• Gradients: import { LinearGradient } from "expo-linear-gradient"
-
-REQUIRED FILE STRUCTURE (generate ALL of these):
-• app.json — Expo config with name, slug, splash color
-• package.json — correct dependencies
-• tailwind.config.js — with extend.colors.primary set to chosen color
-• babel.config.js — NativeWind + Expo preset
-• app/_layout.tsx — root Stack layout
-• app/(auth)/_layout.tsx — auth Stack
-• app/(auth)/login.tsx — login screen (auth method from user choice)
-• app/(tabs)/_layout.tsx — bottom Tabs with icons + colors
-• app/(tabs)/index.tsx — main home screen
-• app/(tabs)/[second-tab-name].tsx — second tab screen (based on app type)
-• app/(tabs)/profile.tsx — profile screen
-• constants/theme.ts — COLORS object with primary, background, card, text, etc.
-• types/index.ts — TypeScript interfaces for all data models
-• store/[appName]Store.ts — Zustand store with relevant state
-• data/seed.ts — realistic, app-specific sample data (minimum 8 items)
-• components/Card.tsx — reusable card component used in list screens
-
-DESIGN RULES — mandatory for every screen:
-1. Page background: bg-slate-50
-2. Cards: bg-white rounded-3xl shadow-md p-5, gap-5 between cards
-3. Headers: pt-14 minimum, text-3xl font-bold text-gray-900, descriptive subtitle text-sm text-gray-400
-4. Primary color: ONLY via style={{ backgroundColor: COLORS.primary }} or color: COLORS.primary — NEVER hardcoded hex strings in JSX
-5. Bottom safe area: pb-28 on all scroll content (tab bar overlap)
-6. Search bars: bg-white rounded-2xl border border-slate-200 px-4 py-3 flex-row items-center gap-3 shadow-sm
-7. Primary CTA buttons: rounded-2xl py-4 items-center with style={{ backgroundColor: COLORS.primary }}
-8. Use LinearGradient for: header hero sections, feature highlight cards, premium banners
-9. Every card: emoji or icon in a rounded-2xl colored box (COLORS.primary + "18"), title bold, subtitle gray, meta in primary color, CTA button
-10. Tab bar: backgroundColor white, borderTopColor slate-100, activeTintColor COLORS.primary
-
-COMPLEXITY REQUIREMENTS:
-• Minimum 5 main files of actual UI code
-• Every screen must have real, working interactions (button presses, navigation)
-• Sample data must be 100% specific to the exact app idea — never "Item 1" or "Product Name"
-• The app must feel like a REAL published app, not a demo
-
-OUTPUT FORMAT — use FILE MARKERS (NOT JSON — code inside JSON breaks parsing):
-
-Write each file like this:
-
-<<<FILE: app.json>>>
-{file content here — raw, no escaping}
-<<<FILE: app/(tabs)/index.tsx>>>
-{file content here — raw TypeScript/TSX}
-<<<FILE: constants/theme.ts>>>
-{file content here}
-<<<END>>>
-
-Rules:
-• Start each file with <<<FILE: path>>>  on its own line
-• Write raw file content — no escaping, no quotes around it
-• End with <<<END>>> on its own line
-• Do NOT use JSON — it breaks when code contains quotes`;
-
-async function generateFullApp(
-  idea: string,
-  questions: { id: string; question: string; options: { id: string; label: string }[] }[],
-  answers: Record<string, string>,
-  model: string,
-): Promise<{ path: string; content: string }[]> {
-  // Format all 18 answers clearly
-  const allAnswers = questions.map((q) => {
-    const opt = q.options.find((o) => o.id === answers[q.id]);
-    return `• ${q.question}\n  → ${opt?.label ?? "(not answered)"}`;
-  }).join("\n\n");
-
-  const userPrompt = `Build a complete React Native + Expo app for the following idea:
-
-"${idea}"
-
-═══════════════════════════════════════
-THE USER'S 18 REQUIREMENTS
-Every single answer below must be DIRECTLY REFLECTED in the generated code.
-═══════════════════════════════════════
-
-${allAnswers}
-
-═══════════════════════════════════════
-IMPLEMENTATION GUIDE — read carefully
-═══════════════════════════════════════
-
-AUTHENTICATION (implement exactly what was chosen):
-• "Email only" → standard email + password login with validation
-• "Google / Apple" → social sign-in buttons using logo-google / logo-apple Ionicons, skip password
-• "Phone / OTP" → phone number input → "Send Code" button → OTP input screen
-• "No login required" → single "Get Started" button going straight to /(tabs), no auth screens needed
-• Show the app's icon (choose an appropriate Ionicons name), app name, and a welcoming tagline
-
-CORE FEATURES (the two main features chosen → build actual screens for them):
-• Each feature gets either its own tab or a dedicated section on the home screen
-• If "Real-time tracking" → add a "● Live" green badge on relevant cards
-• If "Map / Location" → include location distance (e.g., "0.3 km away") on cards
-• If "Calendar / Booking" → show date/time slots in the feature screen
-• If "Chat / Messaging" → show conversation list with last message preview
-• If "Media / Photos" → show grid layout with image placeholders (emoji as stand-in)
-• If "Analytics / Dashboard" → show stat cards with numbers and trend icons
-
-SOCIAL FEATURES (add to content cards):
-• "Likes + Comments" → ❤️ [count] and 💬 [count] row beneath each card
-• "Reviews + Ratings" → ⭐ rating (e.g., "4.8") + review count on cards
-• "Share" → share icon in card top-right
-• "None" → clean cards without social elements
-
-NOTIFICATIONS:
-• "Yes/Push" → bell icon (notifications-outline) with a red badge dot in the top-right header area
-• "No" → clean header
-
-MONETIZATION (visible in profile screen):
-• "Subscription / Freemium" → a premium upgrade card (LinearGradient background) showing 3 benefits + "Upgrade Now" button
-• "Commission-based" → an earnings stats card: "This Month: ₹2,400" with a trend arrow
-• "In-app purchases" → "Coins: 250" balance display in profile header
-• "Free" → clean profile without monetization UI
-
-FIRST SCREEN AFTER LOGIN (reorder the Tabs accordingly):
-• The tab matching this choice must be index 0 in the Tabs navigator
-
-DEVICE FEATURES:
-• "Camera" → camera icon button (camera-outline) in the relevant screen header
-• "GPS / Location" → show "📍 [distance] away" on each card
-• "Push notifications" → handled via the notifications choice above
-
-OFFLINE MODE:
-• "Yes" → show a subtle "● Synced" or "○ Offline" badge somewhere visible
-• "No" → ignore
-
-═══════════════════════════════════════
-CONTENT & SAMPLE DATA
-═══════════════════════════════════════
-
-Generate 8-10 ultra-realistic sample data items specific to this EXACT app idea.
-Each item should look like REAL data a real user would see.
-
-WRONG: { title: "Item 1", subtitle: "Description", meta: "Detail" }
-RIGHT (expense tracker): { title: "Whole Foods · Groceries", amount: "₹1,840", emoji: "🛒", category: "Food", date: "Today" }
-RIGHT (dog walkers): { name: "Sarah M.", rating: 4.9, walks: 142, price: "₹350/hr", emoji: "🐕", distance: "0.4 km" }
-RIGHT (salon): { name: "Priya Sharma", specialty: "Hair & Makeup", rating: 4.8, price: "₹599", emoji: "💇", slots: "3 slots today" }
-
-═══════════════════════════════════════
-OUTPUT CHECKLIST
-═══════════════════════════════════════
-
-Before outputting, verify:
-✓ All 18 answers are reflected somewhere in the code
-✓ Auth screen matches the chosen auth method
-✓ Sample data is 100% specific to "${idea}" — not generic
-✓ At least 3 tabs with real content
-✓ Profile shows the chosen monetization UI
-✓ Social features appear on content cards
-✓ Primary color is consistent and beautiful
-✓ Every screen has pt-14 and pb-28
-✓ TypeScript types are defined and used
-
-Now generate the complete app. Return ONLY the JSON array.`;
-
-  try {
-    const response = await client.messages.create({
-      model,
-      max_tokens: 16000,
-      stop_sequences: ["<<<END>>>"],
-      system: FULL_APP_SYSTEM_PROMPT,
-      messages: [{ role: "user", content: userPrompt }],
-    });
-
-    logAICost({
-      model,
-      action: "generate",
-      inputTokens: response.usage.input_tokens,
-      outputTokens: response.usage.output_tokens,
-    });
-
-    const raw = response.content[0].type === "text" ? response.content[0].text : "";
-    console.log("[generate] Full gen raw length:", raw.length, "stop_reason:", response.stop_reason);
-
-    // Parse file delimiter format: <<<FILE: path>>>\ncontent\n<<<FILE: ...>>>
-    const files = parseFileDelimiters(raw);
-    console.log("[generate] Parsed", files.length, "files:", files.map((f) => f.path));
-
-    if (files.length < 3) throw new Error(`Only ${files.length} files parsed — falling back`);
-
-    const hasMain = files.some((f) => f.path.includes("index.tsx"));
-    if (!hasMain) throw new Error("Missing main screen — falling back");
-
-    return files;
-
-  } catch (err) {
-    console.warn("[generate] Full app generation failed:", err instanceof Error ? err.message : err);
-    return [];
-  }
-}
-
-// Parse the <<<FILE: path>>> ... <<<END>>> delimiter format.
-// No JSON escaping needed — file contents are written raw.
-function parseFileDelimiters(raw: string): { path: string; content: string }[] {
-  const files: { path: string; content: string }[] = [];
-  // Split on the <<<FILE: ..>>> marker
-  const parts = raw.split(/<<<FILE:\s*/);
-  for (const part of parts) {
-    if (!part.trim()) continue;
-    // First line is the path (up to >>>), rest is the file content
-    const markerEnd = part.indexOf(">>>");
-    if (markerEnd === -1) continue;
-    const path = part.slice(0, markerEnd).trim();
-    const content = part.slice(markerEnd + 3).trim(); // skip >>>
-    if (path && content && content.length > 20) {
-      files.push({ path, content });
-    }
-  }
-  return files;
-}
-
-// ── Scaffold fallback (slot-fill approach) ────────────────
-// Used when the full app generation fails. Keeps the service reliable.
+// ── Boilerplate (scaffold + slot-fill) ───────────────────
+// Fast, reliable. Handles: app.json, package.json, babel config,
+// tailwind config, navigation layouts, store, seed data.
+// These files are the same structure for every app — only values differ.
 
 function extractSlots(scaffold: Record<string, string>): string[] {
   const all = Object.values(scaffold).join("\n");
-  const matches = all.match(/KAAFI_SLOT_[A-Z0-9_]+/g) ?? [];
-  return [...new Set(matches)];
+  return [...new Set(all.match(/KAAFI_SLOT_[A-Z0-9_]+/g) ?? [])];
 }
 
 function applySlots(template: string, slots: Record<string, string>): string {
   let result = template;
-  for (const [key, value] of Object.entries(slots)) {
-    result = result.replaceAll(key, value);
-  }
+  for (const [k, v] of Object.entries(slots)) result = result.replaceAll(k, v);
   return result;
 }
 
-const SLOT_SYSTEM_PROMPT = `You are filling in values for a React Native app template. Return a flat JSON object mapping slot names to values. Return ONLY valid JSON. No markdown.`;
+const SLOT_SYSTEM_PROMPT = `Fill slot values for a React Native app template. Return ONLY a flat JSON object — no markdown, no explanation.`;
 
 function buildSlotPrompt(
   idea: string,
@@ -261,10 +35,234 @@ function buildSlotPrompt(
   questions: { id: string; question: string; options: { id: string; label: string }[] }[],
   slots: string[]
 ): string {
-  const answerLines = questions
-    .map((q) => { const opt = q.options.find((o) => o.id === answers[q.id]); return `- ${q.question}: ${opt?.label ?? "(skipped)"}`; })
-    .join("\n");
-  return `App: "${idea}"\nUser choices:\n${answerLines}\n\nFill these slots with specific, realistic values for this exact app:\n${slots.join("\n")}\n\nRules: APP_NAME=catchy 2-3 words, PRIMARY_COLOR=distinctive hex matching app type (not always purple), ITEM titles/subtitles/emojis/meta=ultra-realistic for this specific app.\n\nReturn ONLY the JSON object.`;
+  const lines = questions.map((q) => {
+    const opt = q.options.find((o) => o.id === answers[q.id]);
+    return `- ${q.question}: ${opt?.label ?? "(skipped)"}`;
+  }).join("\n");
+
+  return `App idea: "${idea}"
+User choices:
+${lines}
+
+Fill these slots with specific, realistic values:
+${slots.join("\n")}
+
+Key rules:
+- APP_NAME: 2-3 catchy words, sounds like a real app
+- PRIMARY_COLOR: distinctive hex for this app type. Finance=blue(#2563eb), Food=orange(#f97316), Health=green(#10b981), Social=indigo(#6366f1), Pets=amber(#f59e0b), Services=navy(#1e40af). NOT always purple.
+- ITEM titles/subtitles/emojis: ultra-realistic for "${idea}", not generic "Item 1"
+- LOGIN_TAGLINE: warm, brand-voice (not "Sign in to continue")
+
+Return ONLY the JSON object.`;
+}
+
+// ── Custom screen generation ──────────────────────────────
+// Writes 4 key screens from scratch using ALL 18 user answers.
+// Uses file delimiters (not JSON) to avoid quote-escaping failures.
+// These replace the scaffold's main screens with fully custom code.
+
+const SCREEN_GEN_SYSTEM_PROMPT = `You are a senior React Native developer. Write complete, production-quality TypeScript screens for a mobile app.
+
+TECH STACK:
+- React Native + Expo (import from "react-native", not "react-native-web")
+- Expo Router: import { router } from "expo-router" for navigation
+- Ionicons: import { Ionicons } from "@expo/vector-icons"
+- NativeWind: use className prop for all static styles
+- Dynamic colors (primary color): ONLY via style={{ backgroundColor: PRIMARY_COLOR }} or style={{ color: PRIMARY_COLOR }}
+- State: useState from "react"
+
+DESIGN RULES (non-negotiable):
+- Page bg: className="flex-1 bg-slate-50"
+- Status bar safe area: pt-14 on all screen headers
+- Cards: bg-white rounded-3xl p-5, gap-5 between cards, no border (use shadow-sm)
+- Bottom safe area: pb-28 on all ScrollView content (tab bar overlap)
+- Headers: text-3xl font-bold text-gray-900 + text-sm text-slate-400 subtitle
+- Primary buttons: py-4 rounded-2xl + style={{ backgroundColor: PRIMARY_COLOR }}
+- Use PRIMARY_COLOR richly: icon backgrounds (opacity 15%), card accents, CTAs, badges
+
+OUTPUT — use FILE MARKERS, write raw code (no JSON, no escaping):
+
+<<<FILE: app/(auth)/login.tsx>>>
+{complete TypeScript file content}
+<<<FILE: app/(tabs)/_layout.tsx>>>
+{complete TypeScript file content}
+<<<FILE: app/(tabs)/index.tsx>>>
+{complete TypeScript file content}
+<<<FILE: app/(tabs)/profile.tsx>>>
+{complete TypeScript file content}
+<<<END>>>
+
+Write ONLY these 4 files. Nothing else.`;
+
+// Parse <<<FILE: path>>> ... <<<END>>> delimiter format.
+// No JSON = no escaping issues with code strings.
+function parseFileDelimiters(raw: string): { path: string; content: string }[] {
+  const files: { path: string; content: string }[] = [];
+  const parts = raw.split(/<<<FILE:\s*/);
+  for (const part of parts) {
+    const markerEnd = part.indexOf(">>>");
+    if (markerEnd === -1) continue;
+    const path = part.slice(0, markerEnd).trim();
+    // Remove trailing <<<END>>> if present
+    const content = part.slice(markerEnd + 3).replace(/<<<END>>>[\s\S]*$/, "").trim();
+    if (path && content && content.length > 30 && content.includes("export default")) {
+      files.push({ path, content });
+    }
+  }
+  return files;
+}
+
+async function generateScreens(
+  idea: string,
+  questions: { id: string; question: string; options: { id: string; label: string }[] }[],
+  answers: Record<string, string>,
+  slotValues: Record<string, string>,
+  model: string,
+): Promise<{ path: string; content: string }[]> {
+
+  const PRIMARY_COLOR = slotValues.KAAFI_SLOT_PRIMARY_COLOR ?? "#7c5cfc";
+  const APP_NAME      = slotValues.KAAFI_SLOT_APP_NAME ?? "My App";
+  const APP_ICON      = slotValues.KAAFI_SLOT_APP_ICON ?? "apps-outline";
+
+  // Format all 18 answers for the prompt
+  const allAnswers = questions.map((q) => {
+    const opt = q.options.find((o) => o.id === answers[q.id]);
+    return `  • ${q.question}: ${opt?.label ?? "not answered"}`;
+  }).join("\n");
+
+  // Build sample items from slot values
+  const items = [1,2,3,4,5].map((n) => ({
+    title:    slotValues[`KAAFI_SLOT_ITEM${n}_TITLE`]    ?? `Item ${n}`,
+    subtitle: slotValues[`KAAFI_SLOT_ITEM${n}_SUBTITLE`] ?? "",
+    emoji:    slotValues[`KAAFI_SLOT_ITEM${n}_EMOJI`]    ?? "⭐",
+    meta:     slotValues[`KAAFI_SLOT_ITEM${n}_META`]     ?? "",
+  }));
+  const sampleData = `const SAMPLE_DATA = ${JSON.stringify(items, null, 2)};`;
+
+  const userPrompt = `Build 4 React Native screens for: "${idea}"
+
+PRIMARY_COLOR = "${PRIMARY_COLOR}"
+APP_NAME = "${APP_NAME}"
+APP_ICON = "${APP_ICON}" (Ionicons name)
+LOGIN_TAGLINE = "${slotValues.KAAFI_SLOT_LOGIN_TAGLINE ?? "Welcome back"}"
+HEADER_TITLE = "${slotValues.KAAFI_SLOT_HEADER_TITLE ?? "Home"}"
+SEARCH_PLACEHOLDER = "${slotValues.KAAFI_SLOT_SEARCH_PLACEHOLDER ?? "Search..."}"
+CTA_LABEL = "${slotValues.KAAFI_SLOT_CTA_LABEL ?? "View"}"
+
+Sample data to use (copy this exactly into the code):
+${sampleData}
+
+══════════════════════════════════════
+ALL 18 USER REQUIREMENTS — implement every one:
+══════════════════════════════════════
+${allAnswers}
+
+══════════════════════════════════════
+SCREEN 1: app/(auth)/login.tsx
+══════════════════════════════════════
+Read the "sign-in method" answer above, then implement:
+• "Email only" → email TextInput + password TextInput + "Sign in" button
+• "Google / Apple sign-in" → "Continue with Google" button (logo-google icon) + "Continue with Apple" (logo-apple) — NO password field
+• "Phone number / OTP" → phone TextInput + "Send OTP" button (show a 4-digit code input row after)
+• "No login / Guest" → ONE button "Explore ${APP_NAME}" that calls router.replace("/(tabs)"), no inputs needed
+
+All variants: show Ionicons ${APP_ICON} icon in a PRIMARY_COLOR rounded square, APP_NAME in bold, LOGIN_TAGLINE beneath.
+Sign in action: router.replace("/(tabs)")
+Link to signup: router.push("/(auth)/signup")
+
+══════════════════════════════════════
+SCREEN 2: app/(tabs)/_layout.tsx
+══════════════════════════════════════
+Create the bottom tab navigator. Tabs must match the app's purpose:
+- Read the "first screen after login" answer → that tab goes first (index 0)
+- Read the "core feature 1" and "core feature 2" answers → choose tab names/icons that match
+- Always include a Profile tab last
+- Use Ionicons icons that match each tab's purpose
+- Tab bar: backgroundColor white, activeTintColor PRIMARY_COLOR = "${PRIMARY_COLOR}"
+
+Example for an expense tracker: tabs = Expenses (receipt-outline), Analytics (bar-chart-outline), Profile (person-outline)
+Example for a dog walker app: tabs = Find Walkers (map-outline), My Bookings (calendar-outline), Profile (person-outline)
+Make the tabs SPECIFIC to this exact app: "${idea}"
+
+══════════════════════════════════════
+SCREEN 3: app/(tabs)/index.tsx — THE MOST IMPORTANT SCREEN
+══════════════════════════════════════
+This is what users see first. Make it completely specific to "${idea}".
+
+Header section:
+- Greeting: "${slotValues.KAAFI_SLOT_GREETING ?? "Hey there"} 👋" + bold HEADER_TITLE
+- If notifications answer = "Yes/Push alerts": add bell icon (notifications-outline) in header right with a red dot (View w/ bg-red-500 rounded-full absolute)
+
+Category row (horizontal scroll):
+- 4 filter chips specific to this app (not "All, Popular, New, Featured")
+- First chip active: style={{ backgroundColor: PRIMARY_COLOR }}, text white
+- Others: bg-slate-100 text-slate-600
+
+Search bar: bg-white rounded-2xl border border-slate-200 px-4 py-3 flex-row items-center gap-3 shadow-sm
+
+Card list — use SAMPLE_DATA above. Each card:
+- White bg, rounded-3xl, shadow-sm, p-5
+- Emoji in a rounded-2xl box with PRIMARY_COLOR opacity-15 background
+- Title: font-bold text-base text-gray-900
+- Subtitle: text-sm text-slate-400
+- Meta: font-semibold + style={{ color: PRIMARY_COLOR }}
+- CTA button: "${slotValues.KAAFI_SLOT_CTA_LABEL ?? "View"}" — rounded-xl px-4 py-2 + style={{ backgroundColor: PRIMARY_COLOR }}
+
+Read and implement these from the answers:
+• Social features: if "Likes + Comments" → add ❤️ [count] 💬 [count] row under each card; if "Reviews + Ratings" → add ⭐ 4.8 (142 reviews) text
+• Core features: if "Real-time tracking" → add green "● Live" badge on cards; if "Booking/Appointment" → show "3 slots available" on cards; if "Chat" → show "Last message preview..." in subtitle; if "Analytics" → show trend arrow + percentage
+
+══════════════════════════════════════
+SCREEN 4: app/(tabs)/profile.tsx
+══════════════════════════════════════
+- Hero: large circle avatar (PRIMARY_COLOR bg) with "👤" text, APP_NAME below, ${slotValues.KAAFI_SLOT_PROFILE_META ?? "Member since 2024"}
+
+Read the "monetization" answer:
+• "Subscription / Freemium" → show a rounded-3xl card with LinearGradient (import it) from PRIMARY_COLOR to a darker shade, "⭐ Go Premium" title, 3 bullet benefits for this specific app, "Upgrade Now" button
+• "Commission-based" → show a stats card: "Earnings This Month" + "₹2,400" in large text + trend
+• "In-app purchases" → show "💰 Credits: 250" balance chip in the header
+• "Free" or other → no special monetization card
+
+Menu items (use app-appropriate options, not generic):
+${slotValues.KAAFI_SLOT_MENU1 ? `- ${slotValues.KAAFI_SLOT_MENU1}` : "- My Activity"}
+${slotValues.KAAFI_SLOT_MENU2 ? `- ${slotValues.KAAFI_SLOT_MENU2}` : "- Settings"}
+${slotValues.KAAFI_SLOT_MENU3 ? `- ${slotValues.KAAFI_SLOT_MENU3}` : "- Help"}
+
+Red "Sign out" at bottom.
+
+══════════════════════════════════════
+Remember: PRIMARY_COLOR = "${PRIMARY_COLOR}" — use style prop, not className.
+Write all 4 screens now.`;
+
+  try {
+    const response = await client.messages.create({
+      model,
+      max_tokens: 12000,
+      stop_sequences: ["<<<END>>>"],
+      system: SCREEN_GEN_SYSTEM_PROMPT,
+      messages: [{ role: "user", content: userPrompt }],
+    });
+
+    logAICost({
+      userId: undefined,
+      model,
+      action: "generate",
+      inputTokens: response.usage.input_tokens,
+      outputTokens: response.usage.output_tokens,
+    });
+
+    const raw = response.content[0].type === "text" ? response.content[0].text : "";
+    console.log("[generate] Screen gen: stop_reason=", response.stop_reason, "raw_length=", raw.length);
+
+    const screens = parseFileDelimiters(raw);
+    console.log("[generate] Screens parsed:", screens.map((s) => s.path));
+
+    return screens;
+
+  } catch (err) {
+    console.error("[generate] Screen generation failed:", err instanceof Error ? err.message : err);
+    return []; // fall back to scaffold screens
+  }
 }
 
 // ── Main handler ──────────────────────────────────────────
@@ -275,24 +273,18 @@ export async function POST(req: NextRequest) {
     if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
     const { idea, answers, questions, premium = false } = await req.json();
-    if (!idea || !answers) {
-      return NextResponse.json({ error: "Missing idea or answers." }, { status: 400 });
-    }
+    if (!idea || !answers) return NextResponse.json({ error: "Missing idea or answers." }, { status: 400 });
 
     const model      = premium ? PREMIUM_MODEL : STANDARD_MODEL;
     const creditCost = premium ? PREMIUM_COST  : STANDARD_COST;
 
     const { data: profile } = await supabase
-      .from("profiles")
-      .select("credits_balance, plan")
-      .eq("id", user.id)
-      .single();
+      .from("profiles").select("credits_balance, plan").eq("id", user.id).single();
 
-    if (!profile || profile.credits_balance < creditCost) {
+    if (!profile || profile.credits_balance < creditCost)
       return NextResponse.json({ error: "Not enough credits. Please top up." }, { status: 402 });
-    }
 
-    // Resolve answers for template selector (fallback only)
+    // Resolve answer IDs → labels (for template selector + slot prompt)
     type Q = { id: string; options: { id: string; label: string }[] };
     const resolvedAnswers: Record<string, string> = {};
     if (Array.isArray(questions)) {
@@ -304,11 +296,14 @@ export async function POST(req: NextRequest) {
 
     // Deduct credits
     await supabase.from("profiles").update({ credits_balance: profile.credits_balance - creditCost }).eq("id", user.id);
-    await supabase.from("credit_transactions").insert({ user_id: user.id, delta: -creditCost, reason: premium ? "Premium app generation (Opus)" : "App generation" });
+    await supabase.from("credit_transactions").insert({
+      user_id: user.id, delta: -creditCost,
+      reason: premium ? "Premium app generation" : "App generation",
+    });
 
-    // Create project record
     const projectName = idea.length > 50 ? idea.slice(0, 50) + "…" : idea;
-    const scaffoldType = selectTemplate(idea, resolvedAnswers); // used for fallback + project meta
+    const scaffoldType = selectTemplate(idea, resolvedAnswers);
+
     const { data: project, error: projectError } = await supabase
       .from("projects")
       .insert({ user_id: user.id, name: projectName, prompt: idea, mcq_answers: answers, status: "generating", scaffold_type: scaffoldType })
@@ -316,53 +311,60 @@ export async function POST(req: NextRequest) {
 
     if (projectError || !project) throw new Error("Failed to create project");
 
-    // ── PRIMARY: Full app generation ──────────────────────
-    // Claude acts as a senior developer, writes the complete app from scratch.
-    let patches = await generateFullApp(idea, questions ?? [], answers, model);
-    let usedFullGen = patches.length > 0;
+    // ── STEP 1: Slot-fill (Haiku) → branding values ───────
+    const scaffold = SCAFFOLDS[scaffoldType];
+    const slots = extractSlots(scaffold);
+    const slotPrompt = buildSlotPrompt(idea, answers, questions ?? [], slots);
 
-    // ── FALLBACK: Scaffold + slot-fill ────────────────────
-    // If full generation failed, fall back to the template approach so the
-    // user always gets something working.
-    if (!usedFullGen) {
-      console.warn("[generate] Falling back to scaffold for project", project.id);
-      const scaffold = SCAFFOLDS[scaffoldType];
-      const slots = extractSlots(scaffold);
-      const slotPrompt = buildSlotPrompt(idea, answers, questions ?? [], slots);
-
-      let slotValues: Record<string, string>;
-      try {
-        const msg = await client.messages.create({
-          model: STANDARD_MODEL, // always use Sonnet for slot-fill fallback
-          max_tokens: 2048,
-          system: SLOT_SYSTEM_PROMPT,
-          messages: [{ role: "user", content: slotPrompt }],
-        });
-        const raw = msg.content[0].type === "text" ? msg.content[0].text : "{}";
-        const cleaned = raw.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "").trim();
-        slotValues = JSON.parse(cleaned);
-      } catch {
-        // If even slot-fill fails, refund and error
-        await supabase.from("profiles").update({ credits_balance: profile.credits_balance }).eq("id", user.id);
-        await supabase.from("credit_transactions").insert({ user_id: user.id, delta: creditCost, reason: "Generation failed — credits refunded", project_id: project.id });
-        await supabase.from("projects").update({ status: "error" }).eq("id", project.id);
-        return NextResponse.json({ error: "Generation failed. Your credits have been refunded." }, { status: 500 });
-      }
-
-      patches = Object.entries(scaffold).map(([path, template]) => ({
-        path,
-        content: applySlots(template, slotValues),
-      }));
+    let slotValues: Record<string, string> = {};
+    try {
+      const slotMsg = await client.messages.create({
+        model: "claude-haiku-4-5-20251001",
+        max_tokens: 2048,
+        system: SLOT_SYSTEM_PROMPT,
+        messages: [{ role: "user", content: slotPrompt }],
+      });
+      logAICost({ userId: user.id, model: "claude-haiku-4-5-20251001", action: "generate", inputTokens: slotMsg.usage.input_tokens, outputTokens: slotMsg.usage.output_tokens });
+      const raw = slotMsg.content[0].type === "text" ? slotMsg.content[0].text : "{}";
+      const cleaned = raw.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "").trim();
+      slotValues = JSON.parse(cleaned);
+    } catch (err) {
+      console.warn("[generate] Slot-fill failed:", err);
+      // Continue with empty slot values — screens can still be generated
     }
 
-    // Save all generated files
+    // ── STEP 2: Apply slots to scaffold → boilerplate ─────
+    let patches = Object.entries(scaffold).map(([path, template]) => ({
+      path, content: applySlots(template, slotValues),
+    }));
+
+    // ── STEP 3: Generate custom screens (Sonnet/Opus) ─────
+    // These REPLACE the scaffold's main UI screens with fully custom code
+    // that reflects the user's 18 MCQ answers.
+    const customScreens = await generateScreens(idea, questions ?? [], answers, slotValues, model);
+
+    if (customScreens.length > 0) {
+      console.log("[generate] Applying", customScreens.length, "custom screens");
+      const screenMap = new Map(customScreens.map((s) => [s.path, s.content]));
+      // Replace matching scaffold files with custom screens
+      patches = patches.map((p) => screenMap.has(p.path) ? { ...p, content: screenMap.get(p.path)! } : p);
+      // Add any new files the AI created that aren't in the scaffold
+      for (const screen of customScreens) {
+        if (!patches.some((p) => p.path === screen.path)) {
+          patches.push(screen);
+        }
+      }
+    } else {
+      console.warn("[generate] No custom screens generated, using scaffold screens");
+    }
+
+    // ── STEP 4: Save and complete ─────────────────────────
     await supabase.from("project_files").insert(
       patches.map((p) => ({ project_id: project.id, path: p.path, content: p.content }))
     );
-
     await supabase.from("projects").update({ status: "ready" }).eq("id", project.id);
 
-    return NextResponse.json({ projectId: project.id, fullGen: usedFullGen });
+    return NextResponse.json({ projectId: project.id, customScreens: customScreens.length });
 
   } catch (err) {
     const msg = err instanceof Error ? err.message : "Generation failed.";
