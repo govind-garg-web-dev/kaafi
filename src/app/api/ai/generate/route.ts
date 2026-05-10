@@ -168,6 +168,128 @@ SAMPLE DATA — MOST IMPORTANT. Make it ultra-realistic for this specific app.
 Return ONLY the JSON object. Make every value feel like it came from a real, live app.`;
 }
 
+// ── Feature implementation pass ──────────────────────────
+// Uses the user's 18 MCQ answers to make real code changes.
+// Answers about auth method, core features, social, monetization etc.
+// are NOT reflected in slot values — they need actual code modifications.
+
+const FEATURE_IMPL_SYSTEM_PROMPT = `You are an expert React Native developer implementing user-chosen features in an existing app.
+
+The user answered specific questions about what they want. Your job is to make those choices VISIBLE in the code.
+
+WHAT TO IMPLEMENT (examples):
+- Auth: "Google Sign-in" → Replace email/password fields with a Google button (use Ionicons logo-google), keep email field for display only
+- Auth: "Phone / OTP" → Replace email input with a phone number input and an "Send OTP" button
+- Auth: "No login required" → Change the login screen to just a "Continue without signing in" button that goes to tabs
+- Auth: "Email only" → Keep as-is (this is the default)
+- Social: "Likes and comments" → Add a row with a heart icon (❤️ count) and comment icon (💬 count) at the bottom of each card
+- Social: "Reviews and ratings" → Add star rating (⭐ 4.8) and review count to each card
+- Notifications: "Push alerts" → Add a bell icon with a red dot badge (🔴) in the header right side
+- Monetization: "Subscription / Freemium" → Add a "⭐ Go Premium" banner card in the profile screen
+- Monetization: "Commission-based" → Add a "Your earnings: ₹2,400" card in the profile screen
+- First screen: "Map" → In _layout.tsx, move the map/location tab to index position 0
+- First screen: "Feed" → Default, keep as-is
+- Core feature: "Real-time tracking" → Add a "Live" badge/indicator (green dot) to relevant cards
+- Core feature: "Chat / Messaging" → Add a chat bubble icon button to each list item
+- Core feature: "Reviews" → Add a star rating row to cards
+- Core feature: "Booking calendar" → Add a date badge (📅) to cards showing availability
+- Device features: "Camera" → Add a camera icon button (📷) in the appropriate screen header
+- Device features: "GPS / Location" → Add location text (📍 0.3 km away) to each card
+
+RULES:
+- Return ONLY files that changed — skip unchanged files
+- Return complete file content (not diffs)
+- Preserve all existing imports, state, data, and logic that doesn't need to change
+- Add new imports at the top if needed
+- Keep the code compilable — use valid React Native + NativeWind syntax
+- Make changes MINIMAL but VISIBLE — real UI elements, not just comments
+
+Return format — JSON array only, no markdown:
+[{"path": "app/...", "content": "... complete updated file ..."}]`;
+
+// Categories whose answers need real code changes (not just text slots)
+const CODE_IMPACTING_KEYWORDS = [
+  "sign-in", "sign in", "login", "auth",
+  "social", "comment", "like", "review", "rating",
+  "notification", "push",
+  "monetis", "monetiz", "subscription", "premium", "commission",
+  "first screen", "firstscreen",
+  "core feature", "main feature",
+  "device", "camera", "gps", "location",
+  "navigation", "tab",
+  "offline",
+  "chat", "message",
+];
+
+async function implementUserFeatures(
+  idea: string,
+  questions: { id: string; category: string; question: string; options: { id: string; label: string }[] }[],
+  answers: Record<string, string>,
+  patches: { path: string; content: string }[]
+): Promise<{ path: string; content: string }[]> {
+  try {
+    // Pick only answers that need code changes
+    const featureLines = questions
+      .map((q) => {
+        const opt = q.options.find((o) => o.id === answers[q.id]);
+        if (!opt) return null;
+        const text = `${q.question}: ${opt.label}`.toLowerCase();
+        const needsCode = CODE_IMPACTING_KEYWORDS.some((kw) => text.includes(kw));
+        return needsCode ? `- ${q.question}: ${opt.label}` : null;
+      })
+      .filter(Boolean);
+
+    if (featureLines.length === 0) return [];
+
+    // Send only the key screens — keeps tokens manageable
+    const KEY_SCREENS = [
+      "app/(tabs)/index.tsx",
+      "app/(tabs)/_layout.tsx",
+      "app/(tabs)/profile.tsx",
+      "app/(auth)/login.tsx",
+    ];
+    const screenContext = patches
+      .filter((p) => KEY_SCREENS.includes(p.path))
+      .map((p) => `### ${p.path}\n${p.content}`)
+      .join("\n\n---\n\n");
+
+    const response = await client.messages.create({
+      model: "claude-sonnet-4-6",
+      max_tokens: 14000,
+      system: FEATURE_IMPL_SYSTEM_PROMPT,
+      messages: [{
+        role: "user",
+        content: `App idea: "${idea}"
+
+USER CHOSE THESE FEATURES — implement them all:
+${featureLines.join("\n")}
+
+CURRENT SCREENS:
+${screenContext}
+
+Make the user's choices visible. Return the JSON array of changed files only.`,
+      }],
+    });
+
+    const raw = response.content[0].type === "text" ? response.content[0].text : "";
+    const jsonStart = raw.indexOf("[");
+    const jsonEnd = raw.lastIndexOf("]");
+    if (jsonStart === -1 || jsonEnd === -1) return [];
+
+    const featurePatches: { path: string; content: string }[] = JSON.parse(
+      raw.slice(jsonStart, jsonEnd + 1)
+    );
+
+    // Validate each patch looks like real code before using it
+    return featurePatches.filter(
+      (p) => p.path && p.content && p.content.length > 100 && p.content.includes("export default")
+    );
+  } catch (err) {
+    console.warn("[generate] Feature pass failed, skipping:", err instanceof Error ? err.message : err);
+    return []; // never fail the whole generation
+  }
+}
+
 // ── Design enhancement pass ───────────────────────────────
 // Takes a completed main screen and makes it visually polished
 async function enhanceMainScreen(
@@ -334,6 +456,15 @@ export async function POST(req: NextRequest) {
       path,
       content: applySlots(template, slotValues),
     }));
+
+    // Feature implementation pass — make the user's 18 answers visible in code
+    const featurePatches = await implementUserFeatures(idea, questions ?? [], answers, patches);
+    if (featurePatches.length > 0) {
+      const featureMap = new Map(featurePatches.map((p) => [p.path, p.content]));
+      patches = patches.map((p) =>
+        featureMap.has(p.path) ? { ...p, content: featureMap.get(p.path)! } : p
+      );
+    }
 
     // Design enhancement pass — run in parallel on all key screens
     const SCREENS_TO_ENHANCE = [
