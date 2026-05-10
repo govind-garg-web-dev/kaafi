@@ -48,24 +48,42 @@ export function parsePreviewData(
   const seedContent = get("data/seed.ts");
   const items = parseSeedItems(seedContent);
 
-  // CTA label from index screen
-  let ctaLabel = FALLBACK.ctaLabel;
   const indexContent = get("app/(tabs)/index.tsx");
-  const ctaMatch = indexContent.match(/KAAFI_SLOT_CTA_LABEL["']?\s*\}|["']([^"']{1,20})["']\s*<\/Text>\s*<\/TouchableOpacity>/);
-  if (ctaMatch?.[1]) ctaLabel = ctaMatch[1];
-  // Also try direct extraction from rendered code
-  const ctaDirect = indexContent.match(/<Text[^>]*>\s*([A-Za-z ]{2,15})\s*<\/Text>\s*<\/TouchableOpacity>/);
-  if (ctaDirect?.[1] && !ctaDirect[1].includes("KAAFI")) ctaLabel = ctaDirect[1].trim();
 
-  // Header title
+  // Header title — match any font-bold Text across all scaffold sizes (xl, 2xl, 3xl)
   let headerTitle = FALLBACK.headerTitle;
-  const headerMatch = indexContent.match(/text-xl font-bold[^>]*>\s*([^<\n]{2,30})\s*<\/Text>/);
+  const headerMatch = indexContent.match(/text-(?:xl|2xl|3xl) font-bold[^"]*"[^>]*>\s*([^<\n]{2,40})\s*<\/Text>/);
   if (headerMatch?.[1] && !headerMatch[1].includes("KAAFI")) headerTitle = headerMatch[1].trim();
 
-  // Search placeholder
+  // Search placeholder — specifically target the search TextInput (className contains flex-1,
+  // not bg-gray-50 which is used by auth inputs like email/password)
   let searchPlaceholder = FALLBACK.searchPlaceholder;
-  const searchMatch = indexContent.match(/placeholder=["']([^"']{3,40})["']/);
-  if (searchMatch?.[1] && !searchMatch[1].includes("KAAFI")) searchPlaceholder = searchMatch[1];
+  const searchMatch = indexContent.match(/placeholder=["']([^"']{3,60})["'][^>]*className=["'][^"']*flex-1|className=["'][^"']*flex-1[^"']*["'][^>]*placeholder=["']([^"']{3,60})["']/);
+  if (searchMatch) {
+    const val = (searchMatch[1] ?? searchMatch[2] ?? "").trim();
+    if (val && !val.includes("KAAFI")) searchPlaceholder = val;
+  }
+  // Fallback: any placeholder that isn't an email/password hint
+  if (searchPlaceholder === FALLBACK.searchPlaceholder) {
+    const allPlaceholders = [...indexContent.matchAll(/placeholder=["']([^"']{3,60})["']/g)];
+    for (const m of allPlaceholders) {
+      const val = m[1];
+      if (!val.includes("KAAFI") && !val.includes("@") && !val.includes("••") && val.length > 3) {
+        searchPlaceholder = val;
+        break;
+      }
+    }
+  }
+
+  // CTA label — Text inside a TouchableOpacity (white text with font-semibold)
+  let ctaLabel = FALLBACK.ctaLabel;
+  const ctaMatch = indexContent.match(/<Text className="text-white[^"]*font-semibold[^"]*">\s*([^<\n]{1,20})\s*<\/Text>/);
+  if (ctaMatch?.[1] && !ctaMatch[1].includes("KAAFI")) ctaLabel = ctaMatch[1].trim();
+  // Broader fallback
+  if (ctaLabel === FALLBACK.ctaLabel) {
+    const ctaFallback = indexContent.match(/<Text[^>]*>\s*([A-Za-z]{2,15})\s*<\/Text>\s*<\/TouchableOpacity>/);
+    if (ctaFallback?.[1] && !ctaFallback[1].includes("KAAFI")) ctaLabel = ctaFallback[1].trim();
+  }
 
   return {
     appName,
@@ -79,9 +97,7 @@ export function parsePreviewData(
 }
 
 function parseSeedItems(seed: string) {
-  // Match: { id: "1", title/name: "...", subtitle/description: "...", emoji: "...", ...meta/price/rating: "..." }
   const pattern = /\{\s*id:\s*["'](\d+)["'][\s\S]*?(?:title|name):\s*["']([^"']+)["'][\s\S]*?(?:subtitle|description):\s*["']([^"']+)["'][\s\S]*?emoji:\s*["']([^"']+)["'][\s\S]*?(?:meta|price|rating):\s*["']([^"']+)["'][\s\S]*?\}/g;
-
   const items: PreviewData["items"] = [];
   let match;
   while ((match = pattern.exec(seed)) !== null && items.length < 5) {

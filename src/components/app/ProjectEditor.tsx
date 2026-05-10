@@ -368,7 +368,7 @@ export default function ProjectEditor({
       const res = await fetch(`/api/projects/${project.id}/visual-edit`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ field, value: newValue, oldValue }),
+        body: JSON.stringify({ field, value: newValue }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Visual edit failed");
