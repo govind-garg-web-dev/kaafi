@@ -62,12 +62,23 @@ COMPLEXITY REQUIREMENTS:
 • Sample data must be 100% specific to the exact app idea — never "Item 1" or "Product Name"
 • The app must feel like a REAL published app, not a demo
 
-OUTPUT FORMAT — return ONLY a valid JSON array, no markdown, no explanation:
-[
-  {"path": "app.json", "content": "..."},
-  {"path": "package.json", "content": "..."},
-  ...all other files...
-]`;
+OUTPUT FORMAT — use FILE MARKERS (NOT JSON — code inside JSON breaks parsing):
+
+Write each file like this:
+
+<<<FILE: app.json>>>
+{file content here — raw, no escaping}
+<<<FILE: app/(tabs)/index.tsx>>>
+{file content here — raw TypeScript/TSX}
+<<<FILE: constants/theme.ts>>>
+{file content here}
+<<<END>>>
+
+Rules:
+• Start each file with <<<FILE: path>>>  on its own line
+• Write raw file content — no escaping, no quotes around it
+• End with <<<END>>> on its own line
+• Do NOT use JSON — it breaks when code contains quotes`;
 
 async function generateFullApp(
   idea: string,
@@ -173,6 +184,7 @@ Now generate the complete app. Return ONLY the JSON array.`;
     const response = await client.messages.create({
       model,
       max_tokens: 16000,
+      stop_sequences: ["<<<END>>>"],
       system: FULL_APP_SYSTEM_PROMPT,
       messages: [{ role: "user", content: userPrompt }],
     });
@@ -185,24 +197,43 @@ Now generate the complete app. Return ONLY the JSON array.`;
     });
 
     const raw = response.content[0].type === "text" ? response.content[0].text : "";
-    const jsonStart = raw.indexOf("[");
-    const jsonEnd = raw.lastIndexOf("]");
-    if (jsonStart === -1 || jsonEnd === -1) throw new Error("No JSON array found");
+    console.log("[generate] Full gen raw length:", raw.length, "stop_reason:", response.stop_reason);
 
-    const files: { path: string; content: string }[] = JSON.parse(raw.slice(jsonStart, jsonEnd + 1));
+    // Parse file delimiter format: <<<FILE: path>>>\ncontent\n<<<FILE: ...>>>
+    const files = parseFileDelimiters(raw);
+    console.log("[generate] Parsed", files.length, "files:", files.map((f) => f.path));
 
-    // Validate: must have at least the main screen and config
+    if (files.length < 3) throw new Error(`Only ${files.length} files parsed — falling back`);
+
     const hasMain = files.some((f) => f.path.includes("index.tsx"));
-    const hasConfig = files.some((f) => f.path === "app.json");
-    if (!hasMain || !hasConfig) throw new Error("Generated files missing critical screens");
+    if (!hasMain) throw new Error("Missing main screen — falling back");
 
-    // Filter out any empty or suspiciously short files
-    return files.filter((f) => f.path && f.content && f.content.length > 50);
+    return files;
 
   } catch (err) {
     console.warn("[generate] Full app generation failed:", err instanceof Error ? err.message : err);
-    return []; // caller will fall back to scaffold
+    return [];
   }
+}
+
+// Parse the <<<FILE: path>>> ... <<<END>>> delimiter format.
+// No JSON escaping needed — file contents are written raw.
+function parseFileDelimiters(raw: string): { path: string; content: string }[] {
+  const files: { path: string; content: string }[] = [];
+  // Split on the <<<FILE: ..>>> marker
+  const parts = raw.split(/<<<FILE:\s*/);
+  for (const part of parts) {
+    if (!part.trim()) continue;
+    // First line is the path (up to >>>), rest is the file content
+    const markerEnd = part.indexOf(">>>");
+    if (markerEnd === -1) continue;
+    const path = part.slice(0, markerEnd).trim();
+    const content = part.slice(markerEnd + 3).trim(); // skip >>>
+    if (path && content && content.length > 20) {
+      files.push({ path, content });
+    }
+  }
+  return files;
 }
 
 // ── Scaffold fallback (slot-fill approach) ────────────────
