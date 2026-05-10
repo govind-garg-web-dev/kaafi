@@ -504,26 +504,60 @@ export default function ProjectEditor({
 
             {/* Visual Edit toggle — only in preview tab, not when Snack is active */}
             {activeTab === "preview" && !snackUrl && (
-              <button
+              <motion.button
                 onClick={() => setVisualEditMode((v) => !v)}
-                className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-xl transition-all"
-                style={{
-                  background: visualEditMode ? "rgba(52,211,153,0.12)" : "rgba(255,255,255,0.04)",
-                  border: `1px solid ${visualEditMode ? "rgba(52,211,153,0.3)" : "rgba(255,255,255,0.08)"}`,
+                layout
+                title="Edit text and colours directly — 0 credits"
+                className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-xl overflow-hidden"
+                animate={{
+                  background: visualEditMode ? "rgba(52,211,153,0.15)" : "rgba(255,255,255,0.04)",
+                  borderColor: visualEditMode ? "rgba(52,211,153,0.4)" : "rgba(255,255,255,0.08)",
                   color: visualEditMode ? "#34d399" : "#94a3b8",
+                }}
+                transition={{ duration: 0.2 }}
+                style={{
+                  border: "1px solid",
                   fontFamily: "var(--font-inter)",
                 }}
-                title="Edit text and colours directly — 0 credits"
               >
-                <Paintbrush size={12} />
-                {visualEditMode ? "Visual Edit ON" : "Visual Edit"}
+                <AnimatePresence mode="wait" initial={false}>
+                  {visualEditMode ? (
+                    <motion.span
+                      key="save"
+                      initial={{ opacity: 0, y: 6 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: -6 }}
+                      transition={{ duration: 0.15 }}
+                      className="flex items-center gap-1.5"
+                    >
+                      <Check size={12} />
+                      Done Editing
+                    </motion.span>
+                  ) : (
+                    <motion.span
+                      key="edit"
+                      initial={{ opacity: 0, y: 6 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: -6 }}
+                      transition={{ duration: 0.15 }}
+                      className="flex items-center gap-1.5"
+                    >
+                      <Paintbrush size={12} />
+                      Visual Edit
+                    </motion.span>
+                  )}
+                </AnimatePresence>
                 {visualEditMode && (
-                  <span className="text-[10px] px-1.5 py-0.5 rounded-full ml-0.5"
-                    style={{ background: "rgba(52,211,153,0.15)", color: "#34d399" }}>
+                  <motion.span
+                    initial={{ opacity: 0, scale: 0.8 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    className="text-[10px] px-1.5 py-0.5 rounded-full"
+                    style={{ background: "rgba(52,211,153,0.15)", color: "#34d399" }}
+                  >
                     0 credits
-                  </span>
+                  </motion.span>
                 )}
-              </button>
+              </motion.button>
             )}
 
             {/* Live preview toggle */}
