@@ -317,7 +317,19 @@ export default function ProjectEditor({
     setMessages((m) => [...m, { role: "assistant", content: "Change discarded — no credits spent." }]);
   };
 
-  const handleVisualEdit = async (field: string, oldValue: string, newValue: string) => {
+  const handleVisualEdit = async (field: string, _ignored: string, newValue: string) => {
+    // Use livePreviewData as the authoritative old value — it's derived directly from
+    // the file content, so it's guaranteed to match what's actually in the file.
+    // This removes any dependency on savedValueRef inside EditableText.
+    const oldValueMap: Record<string, string> = {
+      headerTitle: livePreviewData.headerTitle || livePreviewData.appName,
+      ctaLabel: livePreviewData.ctaLabel,
+      searchPlaceholder: livePreviewData.searchPlaceholder,
+      appName: livePreviewData.appName,
+      primaryColor: livePreviewData.primaryColor,
+    };
+    const oldValue = oldValueMap[field] ?? "";
+
     if (!newValue.trim() || newValue === oldValue) return;
 
     // Optimistic update — apply to files state immediately so the preview
