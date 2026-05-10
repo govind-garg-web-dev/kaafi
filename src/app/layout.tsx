@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Playfair_Display, Dancing_Script, Inter } from "next/font/google";
 import "./globals.css";
+import PostHogProvider from "@/components/PostHogProvider";
 
 const inter = Inter({
   variable: "--font-inter",
@@ -40,7 +41,9 @@ export default function RootLayout({
       lang="en"
       className={`${inter.variable} ${playfair.variable} ${dancing.variable}`}
     >
-      <body className="min-h-screen antialiased">{children}</body>
+      <body className="min-h-screen antialiased">
+        <PostHogProvider>{children}</PostHogProvider>
+      </body>
     </html>
   );
 }

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import Anthropic from "@anthropic-ai/sdk";
+import { logAICost } from "@/lib/logAICost";
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
@@ -29,9 +30,16 @@ export async function POST(req: NextRequest) {
       : "light";
 
     const type = result.includes("heavy") ? "heavy" : "light";
+
+    logAICost({
+      model: "claude-haiku-4-5-20251001",
+      action: "classify",
+      inputTokens: response.usage.input_tokens,
+      outputTokens: response.usage.output_tokens,
+    });
+
     return NextResponse.json({ type, credits: type === "heavy" ? 2 : 1 });
   } catch {
-    // On any error, default to light — never block the user
     return NextResponse.json({ type: "light", credits: 1 });
   }
 }

@@ -19,7 +19,7 @@ const nextConfig: NextConfig = {
               "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
               "font-src 'self' https://fonts.gstatic.com",
               "frame-src 'self' https://snack.expo.dev https://api.razorpay.com",
-              "connect-src 'self' https://*.supabase.co https://api.anthropic.com https://exp.host https://api.expo.dev https://app.loops.so https://api.razorpay.com",
+              "connect-src 'self' https://*.supabase.co https://api.anthropic.com https://exp.host https://api.expo.dev https://app.loops.so https://api.razorpay.com https://app.posthog.com https://eu.posthog.com https://*.sentry.io https://*.ingest.sentry.io",
               "img-src 'self' data: blob: https:",
             ].join("; "),
           },

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import Anthropic from "@anthropic-ai/sdk";
 import { createClient } from "@/lib/supabase/server";
 import { SCAFFOLDS, selectTemplate } from "@/lib/scaffolds/selector";
+import { logAICost } from "@/lib/logAICost";
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 const CREDIT_COST = 3;
@@ -165,7 +166,14 @@ export async function POST(req: NextRequest) {
 
       const raw = message.content[0].type === "text" ? message.content[0].text : "{}";
       const cleaned = raw.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "").trim();
-      return JSON.parse(cleaned); // throws on invalid JSON
+      logAICost({
+        userId: user?.id,
+        model: "claude-sonnet-4-6",
+        action: "generate",
+        inputTokens: message.usage.input_tokens,
+        outputTokens: message.usage.output_tokens,
+      });
+      return JSON.parse(cleaned);
     }
 
     // Auto-retry: attempt 1, then attempt 2 — both on our cost

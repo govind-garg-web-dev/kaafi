@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useRef, useEffect, useMemo } from "react";
+import { useState, useRef, useEffect, useMemo, useCallback } from "react";
+import posthog from "posthog-js";
 import { motion, AnimatePresence } from "framer-motion";
 import { Send, Download, RotateCcw, Smartphone, Code2, ChevronDown, Loader2, Pencil, Trash2, Check, X, Hammer, Paintbrush } from "lucide-react";
 import type { Project, ProjectFile } from "@/lib/supabase/types";
@@ -305,6 +306,7 @@ export default function ProjectEditor({
       if (checkpointTimer.current) clearTimeout(checkpointTimer.current);
       checkpointTimer.current = setTimeout(() => setCheckpointVisible(false), 2500);
 
+      posthog.capture?.("edit_sent", { projectId: project.id });
       setMessages((m) => [...m, { role: "assistant", content: pendingReply }]);
       setPendingPatches(null);
       setPendingReply("");
@@ -431,6 +433,7 @@ export default function ProjectEditor({
       a.download = `${project.name.replace(/\s+/g, "-").toLowerCase()}.zip`;
       a.click();
       URL.revokeObjectURL(url);
+      posthog.capture?.("export_downloaded", { projectId: project.id });
       toast.success("ZIP downloaded", "Your source code is ready.");
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Export failed.";

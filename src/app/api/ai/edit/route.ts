@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import Anthropic from "@anthropic-ai/sdk";
 import { createClient } from "@/lib/supabase/server";
+import { logAICost } from "@/lib/logAICost";
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
@@ -68,6 +69,13 @@ export async function POST(req: NextRequest) {
     try {
       const response = await attempt(false);
       const raw = response.content[0].type === "text" ? response.content[0].text : "";
+      logAICost({
+        userId: user.id,
+        model: "claude-sonnet-4-6",
+        action: "edit",
+        inputTokens: response.usage.input_tokens,
+        outputTokens: response.usage.output_tokens,
+      });
       parsed = extractJSON(raw);
     } catch (firstErr) {
       console.warn("[/api/ai/edit] Attempt 1 failed, retrying:", firstErr);

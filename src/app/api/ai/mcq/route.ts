@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import Anthropic from "@anthropic-ai/sdk";
+import { logAICost } from "@/lib/logAICost";
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
@@ -82,6 +83,13 @@ export async function POST(req: NextRequest) {
     if (!Array.isArray(parsed.questions) || parsed.questions.length === 0) {
       throw new Error("Invalid questions structure from AI");
     }
+
+    logAICost({
+      model: "claude-haiku-4-5-20251001",
+      action: "mcq",
+      inputTokens: message.usage.input_tokens,
+      outputTokens: message.usage.output_tokens,
+    });
 
     return NextResponse.json(parsed);
   } catch (err) {
