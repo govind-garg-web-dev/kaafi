@@ -660,12 +660,22 @@ export default function ProjectEditor({
         <div className="flex-1 overflow-hidden flex items-center justify-center p-8">
           {activeTab === "preview" ? (
             snackUrl ? (
-              /* Live Expo Snack iframe */
+              /* Live Expo Snack iframe
+                 Snack embed layout: ~60% code editor (left) + ~40% preview (right).
+                 We anchor the iframe to the right so only the preview portion shows
+                 in the narrow phone bezel. */
               <PhoneBezel device={device}>
-                <div className="absolute inset-0 bg-white overflow-hidden">
+                <div className="absolute inset-0 overflow-hidden" style={{ background: "#f8fafc" }}>
                   <iframe
                     src={snackUrl}
-                    style={{ width: "100%", height: "100%", border: "none" }}
+                    style={{
+                      position: "absolute",
+                      top: 0,
+                      right: 0,
+                      width: 820,
+                      height: "100%",
+                      border: "none",
+                    }}
                     allow="geolocation; camera; microphone"
                     title="Live app preview"
                   />
