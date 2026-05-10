@@ -679,23 +679,23 @@ export default function ProjectEditor({
                     allow="geolocation; camera; microphone"
                     title="Live app preview"
                   />
-                  {/* Cover Expo branding button — top-right of preview */}
+                  {/* Cover Expo branding button — starts from very top */}
                   <div style={{
                     position: "absolute",
-                    top: 28,
+                    top: 0,
                     right: 0,
-                    width: 85,
-                    height: 42,
+                    width: 105,
+                    height: 48,
                     background: "white",
                     zIndex: 10,
                   }} />
-                  {/* Cover platform toggle button — bottom-right of preview */}
+                  {/* Cover only the small toggle dot — bottom-right corner */}
                   <div style={{
                     position: "absolute",
                     bottom: 0,
                     right: 0,
-                    width: 70,
-                    height: 52,
+                    width: 38,
+                    height: 32,
                     background: "white",
                     zIndex: 10,
                   }} />
