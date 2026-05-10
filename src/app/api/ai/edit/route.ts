@@ -6,15 +6,25 @@ const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
 const SYSTEM_PROMPT = `You are Kaafi's code editor. The user has an existing React Native + Expo app and wants to make a change.
 
-Given their instruction and the current files, return:
-1. A JSON array of file patches (only files that change)
-2. A short, friendly reply describing what you changed
+Given their instruction and the current files, return ONLY the files that need to change.
 
-Output format (return ONLY this JSON, no markdown):
+Output format (return ONLY this JSON, no markdown, no explanation):
 {
-  "patches": [{ "path": "...", "content": "... full updated file ..." }],
-  "reply": "Done! I changed X and Y."
-}`;
+  "patches": [{ "path": "...", "content": "... full updated file content ..." }],
+  "reply": "Done! I changed X."
+}
+
+Important:
+- Only include files that actually need to change
+- Return the complete file content for each changed file, not just the diff
+- Keep unchanged files out of patches entirely`;
+
+function extractJSON(raw: string): { patches: { path: string; content: string }[]; reply: string } {
+  const jsonStart = raw.indexOf("{");
+  const jsonEnd = raw.lastIndexOf("}");
+  if (jsonStart === -1 || jsonEnd === -1) throw new Error("No JSON found in response");
+  return JSON.parse(raw.slice(jsonStart, jsonEnd + 1));
+}
 
 export async function POST(req: NextRequest) {
   try {
@@ -24,7 +34,6 @@ export async function POST(req: NextRequest) {
 
     const { message, files } = await req.json();
 
-    // Check credits upfront so the user gets a clear error before the AI call
     const { data: profile } = await supabase
       .from("profiles")
       .select("credits_balance")
@@ -39,30 +48,47 @@ export async function POST(req: NextRequest) {
       .map((f) => `### ${f.path}\n${f.content}`)
       .join("\n\n---\n\n");
 
-    const response = await client.messages.create({
-      model: "claude-sonnet-4-6",
-      max_tokens: 4096,
-      system: SYSTEM_PROMPT,
-      messages: [{
-        role: "user",
-        content: `User instruction: "${message}"\n\nCurrent files:\n${filesContext}`,
-      }],
-    });
+    const userPrompt = `User instruction: "${message}"\n\nCurrent files:\n${filesContext}`;
 
-    const raw = response.content[0].type === "text" ? response.content[0].text : "";
+    async function attempt(isRetry: boolean) {
+      const systemMsg = isRetry
+        ? `${SYSTEM_PROMPT}\n\nIMPORTANT: Your previous response was cut off or had invalid JSON. Return ONLY the JSON object. Make file content as concise as possible while keeping it valid.`
+        : SYSTEM_PROMPT;
 
-    // Robust JSON extraction — find the outermost { } regardless of surrounding text or code fences
-    const jsonStart = raw.indexOf("{");
-    const jsonEnd = raw.lastIndexOf("}");
-    if (jsonStart === -1 || jsonEnd === -1) {
-      console.error("[/api/ai/edit] No JSON object found in response:", raw.slice(0, 200));
-      return NextResponse.json({ error: "The AI returned an unexpected response. Please try rephrasing your edit." }, { status: 500 });
+      return client.messages.create({
+        model: "claude-sonnet-4-6",
+        max_tokens: 16000,
+        system: systemMsg,
+        messages: [{ role: "user", content: userPrompt }],
+      });
     }
 
-    const { patches, reply } = JSON.parse(raw.slice(jsonStart, jsonEnd + 1));
+    let parsed: { patches: { path: string; content: string }[]; reply: string };
 
-    // Return patches for the client to show in DiffViewer — no credits deducted yet, no DB writes yet
-    return NextResponse.json({ patches: patches ?? [], reply: reply ?? "Changes ready to apply." });
+    try {
+      const response = await attempt(false);
+      const raw = response.content[0].type === "text" ? response.content[0].text : "";
+      parsed = extractJSON(raw);
+    } catch (firstErr) {
+      console.warn("[/api/ai/edit] Attempt 1 failed, retrying:", firstErr);
+      try {
+        const response = await attempt(true);
+        const raw = response.content[0].type === "text" ? response.content[0].text : "";
+        parsed = extractJSON(raw);
+      } catch (secondErr) {
+        const msg = secondErr instanceof Error ? secondErr.message : "Unknown error";
+        console.error("[/api/ai/edit] Both attempts failed:", msg);
+        return NextResponse.json(
+          { error: "The AI couldn't complete this edit. Try a simpler instruction or break it into smaller steps." },
+          { status: 500 }
+        );
+      }
+    }
+
+    return NextResponse.json({
+      patches: parsed.patches ?? [],
+      reply: parsed.reply ?? "Changes ready to apply.",
+    });
   } catch (err) {
     const msg = err instanceof Error ? err.message : "Unknown error";
     console.error("[/api/ai/edit]", msg);
